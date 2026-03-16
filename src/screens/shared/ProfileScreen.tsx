@@ -1,15 +1,315 @@
-import React from 'react'
-import { View, Text, StyleSheet } from 'react-native'
-import { colors, font } from '../../theme'
+import React, { useState, useEffect } from 'react'
+import {
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  TextInput, Alert, ActivityIndicator, Image,
+} from 'react-native'
+import { useNavigation } from '@react-navigation/native'
+import { useAuth } from '../../context/AuthContext'
+import { useLang } from '../../context/LanguageContext'
+import { updateProfileAPI, aiExtractSkillsAPI } from '../../api'
+import { colors, spacing, radius, font } from '../../theme'
+
+const SKILLS_OPTIONS = [
+  'React', 'React Native', 'Node.js', 'Python', 'UI/UX', 'Figma',
+  'Graphic Design', 'Video Editing', 'Copywriting', 'SEO', 'Marketing',
+  'Data Analysis', 'Translation', 'Excel', 'PHP', 'Laravel',
+]
+
+const roleColor: Record<string, string> = {
+  client:     colors.success,
+  freelancer: colors.info,
+  admin:      colors.warning,
+}
 
 export default function ProfileScreen() {
+  const { user, updateUser, logout } = useAuth()
+  const navigation = useNavigation<any>()
+  const [editing, setEditing]         = useState(false)
+  const [saving, setSaving]           = useState(false)
+  const [bio, setBio]                 = useState(user?.bio || '')
+  const [country, setCountry]         = useState((user as any)?.country || '')
+  const [skills, setSkills]           = useState<string[]>(user?.skills || [])
+  const [skillInput, setSkillInput]   = useState('')
+  const [aiSkillLoading, setAiSkillLoading] = useState(false)
+
+  useEffect(() => {
+    setBio(user?.bio || '')
+    setCountry((user as any)?.country || '')
+    setSkills(user?.skills || [])
+  }, [user])
+
+  const toggleSkill = (s: string) => {
+    setSkills(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
+  }
+
+  const addCustomSkill = () => {
+    const s = skillInput.trim()
+    if (s && !skills.includes(s)) setSkills(prev => [...prev, s])
+    setSkillInput('')
+  }
+
+  const handleAiExtractSkills = async () => {
+    if (!bio.trim()) {
+      Alert.alert(isArabic ? 'تنبيه' : 'Tip', isArabic ? 'أدخل نبذتك أولاً ثم اضغط الزر' : 'Write your bio first, then tap this button')
+      return
+    }
+    setAiSkillLoading(true)
+    try {
+      const { data } = await aiExtractSkillsAPI({ bio, portfolioText: bio })
+      const extracted: string[] = data.skills || []
+      const newOnes = extracted.filter((s: string) => !skills.includes(s))
+      if (newOnes.length === 0) {
+        Alert.alert(isArabic ? 'لا جديد' : 'Up to date', isArabic ? 'لديك بالفعل كل المهارات المقترحة!' : 'You already have all the suggested skills!')
+      } else {
+        Alert.alert(
+          isArabic ? '🤖 مهارات مقترحة' : '🤖 Suggested Skills',
+          `${isArabic ? 'تم اكتشاف:' : 'Detected:'} ${newOnes.join(', ')}\n\n${isArabic ? 'هل تريد إضافتها؟' : 'Add these to your profile?'}`,
+          [
+            { text: isArabic ? 'إلغاء' : 'Cancel', style: 'cancel' },
+            { text: isArabic ? 'إضافة الكل' : 'Add All', onPress: () => setSkills(prev => [...new Set([...prev, ...newOnes])]) },
+          ]
+        )
+      }
+    } catch {
+      Alert.alert(isArabic ? 'خطأ' : 'Error', isArabic ? 'فشل استخراج المهارات' : 'AI skill extraction failed')
+    }
+    setAiSkillLoading(false)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const { data } = await updateProfileAPI({ bio, country, skills })
+      updateUser(data)
+      setEditing(false)
+      Alert.alert('✅ Saved', 'Profile updated successfully.')
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.error || 'Failed to update profile')
+    }
+    setSaving(false)
+  }
+
+  const { tr, isArabic } = useLang()
+  const dir = isArabic ? 'right' as const : 'left' as const
+
+  const handleLogout = () => {
+    Alert.alert(tr.logout, tr.logoutConfirm, [
+      { text: tr.cancel, style: 'cancel' },
+      { text: tr.logout, style: 'destructive', onPress: () => logout() },
+    ])
+  }
+
+  const initials = user?.username?.slice(0, 2).toUpperCase() || '??'
+  const rc = roleColor[user?.role || 'client']
+
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>👤 Profile — Coming Soon</Text>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={[styles.headerTitle, { textAlign: dir }]}>{tr.myProfile}</Text>
+        <TouchableOpacity onPress={() => editing ? handleSave() : setEditing(true)} disabled={saving}>
+          {saving
+            ? <ActivityIndicator color={colors.primary} />
+            : <Text style={styles.editBtn}>{editing ? `${tr.saveChanges} ✓` : `${tr.editProfile} ✏️`}</Text>
+          }
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Avatar & Info */}
+        <View style={styles.avatarSection}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+          <Text style={styles.username}>{user?.username}</Text>
+          <Text style={styles.email}>{user?.email}</Text>
+          <View style={[styles.roleBadge, { backgroundColor: rc + '22', borderColor: rc + '55' }]}>
+            <Text style={[styles.roleText, { color: rc }]}>
+              {user?.role === 'freelancer' ? '🛠 Freelancer' : '💼 Client'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          {[
+            { label: 'Rating',    value: `★ ${(user?.rating ?? 0).toFixed(1)}`, color: colors.warning },
+            { label: 'Projects',  value: user?.totalProjects ?? 0,               color: colors.info },
+            { label: 'Earned',    value: `$${user?.totalEarned ?? 0}`,            color: colors.success },
+          ].map(s => (
+            <View key={s.label} style={styles.statCard}>
+              <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
+              <Text style={styles.statLabel}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Reviews button (visible to freelancers & clients) */}
+        <TouchableOpacity
+          style={styles.reviewsBtn}
+          onPress={() => navigation.navigate('ReviewsScreen', {
+            freelancerId:   user?._id,
+            freelancerName: user?.username,
+          })}
+        >
+          <Text style={styles.reviewsBtnText}>
+            ⭐ {isArabic ? 'التقييمات والمراجعات' : 'Ratings & Reviews'}
+          </Text>
+          <Text style={styles.reviewsBtnCount}>
+            {(user as any)?.totalReviews ?? 0} {isArabic ? 'تقييم' : 'reviews'} →
+          </Text>
+        </TouchableOpacity>
+
+        {/* Bio */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Bio / نبذة عنك</Text>
+          {editing ? (
+            <TextInput
+              style={[styles.input, styles.textarea]}
+              value={bio}
+              onChangeText={setBio}
+              placeholder="Tell clients about yourself..."
+              placeholderTextColor={colors.textDim}
+              multiline
+              numberOfLines={4}
+            />
+          ) : (
+            <Text style={styles.bioText}>{bio || 'No bio added yet.'}</Text>
+          )}
+        </View>
+
+        {/* Country */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Country / الدولة</Text>
+          {editing ? (
+            <TextInput
+              style={styles.input}
+              value={country}
+              onChangeText={setCountry}
+              placeholder="e.g. Saudi Arabia"
+              placeholderTextColor={colors.textDim}
+            />
+          ) : (
+            <Text style={styles.bioText}>{country || 'Not specified'}</Text>
+          )}
+        </View>
+
+        {/* Skills */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Skills / المهارات</Text>
+
+          {editing && (
+            <>
+              {/* AI Skill Extractor */}
+              <TouchableOpacity
+                style={[styles.aiSkillBtn, aiSkillLoading && { opacity: 0.6 }]}
+                onPress={handleAiExtractSkills}
+                disabled={aiSkillLoading}
+              >
+                {aiSkillLoading
+                  ? <ActivityIndicator color="white" size="small" />
+                  : <Text style={styles.aiSkillBtnText}>
+                      🤖 {isArabic ? 'استخرج مهاراتي من نبذتي بالذكاء الاصطناعي' : 'AI: Extract Skills from My Bio'}
+                    </Text>
+                }
+              </TouchableOpacity>
+
+              <View style={styles.skillInputRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={skillInput}
+                  onChangeText={setSkillInput}
+                  placeholder="Add custom skill..."
+                  placeholderTextColor={colors.textDim}
+                  onSubmitEditing={addCustomSkill}
+                />
+                <TouchableOpacity style={styles.addSkillBtn} onPress={addCustomSkill}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>＋</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.skillGrid}>
+                {SKILLS_OPTIONS.map(s => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.skillChip, skills.includes(s) && styles.skillChipActive]}
+                    onPress={() => toggleSkill(s)}
+                  >
+                    <Text style={[styles.skillChipText, skills.includes(s) && { color: 'white' }]}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
+          <View style={styles.skillGrid}>
+            {skills.length === 0 ? (
+              <Text style={styles.bioText}>No skills added yet.</Text>
+            ) : skills.map(s => (
+              <View key={s} style={[styles.skillChip, styles.skillChipActive]}>
+                <Text style={[styles.skillChipText, { color: 'white' }]}>{s}</Text>
+                {editing && (
+                  <TouchableOpacity onPress={() => setSkills(prev => prev.filter(x => x !== s))} style={{ marginLeft: 4 }}>
+                    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Logout */}
+        <View style={styles.section}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <Text style={styles.logoutText}>🚪 {tr.logout}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
     </View>
   )
 }
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  text: { color: colors.text, fontSize: font.lg },
+  container:   { flex: 1, backgroundColor: colors.bg },
+  header:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 56, paddingBottom: spacing.md, paddingHorizontal: spacing.md, backgroundColor: colors.cardDark },
+  headerTitle: { color: colors.text, fontSize: font.xl, fontWeight: '800' },
+  editBtn:     { color: colors.primary, fontWeight: '700', fontSize: font.base },
+
+  avatarSection:{ alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.lg, backgroundColor: colors.cardDark },
+  avatar:       { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
+  avatarText:   { color: 'white', fontSize: font.xxl, fontWeight: '900' },
+  username:     { color: colors.text, fontSize: font.xl, fontWeight: '800' },
+  email:        { color: colors.textMuted, fontSize: font.sm, marginTop: 2, marginBottom: spacing.sm },
+  roleBadge:    { paddingHorizontal: 14, paddingVertical: 5, borderRadius: radius.full, borderWidth: 1 },
+  roleText:     { fontSize: font.sm, fontWeight: '700' },
+
+  statsRow:   { flexDirection: 'row', gap: spacing.sm, padding: spacing.md },
+  statCard:   { flex: 1, backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  statValue:  { fontSize: font.lg, fontWeight: '800' },
+  statLabel:  { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
+
+  reviewsBtn:      { marginHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  reviewsBtnText:  { color: colors.text, fontWeight: '700', fontSize: font.base },
+  reviewsBtnCount: { color: colors.primary, fontSize: font.sm, fontWeight: '600' },
+
+  section:      { paddingHorizontal: spacing.md, marginBottom: spacing.md },
+  sectionTitle: { color: colors.text, fontSize: font.base, fontWeight: '700', marginBottom: spacing.sm },
+  bioText:      { color: colors.textMuted, fontSize: font.base, lineHeight: 22 },
+
+  input:        { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, color: colors.text, fontSize: font.base, paddingHorizontal: spacing.md, paddingVertical: 12 },
+  textarea:     { height: 100, textAlignVertical: 'top' },
+
+  aiSkillBtn:     { backgroundColor: colors.info, borderRadius: radius.md, paddingVertical: 11, alignItems: 'center', marginBottom: spacing.sm },
+  aiSkillBtnText: { color: 'white', fontWeight: '700', fontSize: font.sm },
+
+  skillInputRow:{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  addSkillBtn:  { backgroundColor: colors.primary, borderRadius: radius.md, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' },
+  skillGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
+  skillChip:    { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center' },
+  skillChipActive:{ backgroundColor: colors.primary, borderColor: colors.primary },
+  skillChipText:{ color: colors.textMuted, fontSize: font.sm, fontWeight: '600' },
+
+  logoutBtn:  { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.error + '44', borderRadius: radius.lg, paddingVertical: 14, alignItems: 'center' },
+  logoutText: { color: colors.error, fontSize: font.base, fontWeight: '700' },
 })

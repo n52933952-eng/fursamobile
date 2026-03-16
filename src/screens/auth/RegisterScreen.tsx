@@ -5,32 +5,44 @@ import {
 } from 'react-native'
 import { colors, spacing, radius, font } from '../../theme'
 import { registerAPI } from '../../api'
-import { useAuth } from '../../context/AuthContext'
-
-const roles = [
-  { id: 'client',     label: 'Client',     labelAr: 'عميل',     desc: 'Post projects & hire freelancers',    icon: '💼' },
-  { id: 'freelancer', label: 'Freelancer', labelAr: 'مستقل',    desc: 'Find work & offer your services',     icon: '🚀' },
-]
+import { useLang } from '../../context/LanguageContext'
 
 export default function RegisterScreen({ navigation }: any) {
   const [form, setForm]         = useState({ username: '', email: '', password: '', role: '' })
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading]   = useState(false)
-  const { login } = useAuth()
+  const { tr, isArabic, lang, toggleLang } = useLang()
 
+  const textDir = isArabic ? 'right' as const : 'left' as const
   const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }))
+
+  const roles = [
+    { id: 'client',     label: tr.client,     desc: tr.clientDesc,     icon: '💼' },
+    { id: 'freelancer', label: tr.freelancer,  desc: tr.freelancerDesc, icon: '🚀' },
+  ]
 
   const handleRegister = async () => {
     if (!form.username || !form.email || !form.password || !form.role) {
-      Alert.alert('Error', 'Please fill all fields and select a role')
+      Alert.alert(
+        isArabic ? 'خطأ' : 'Error',
+        isArabic ? 'يرجى ملء جميع الحقول واختيار دور' : 'Please fill all fields and select a role'
+      )
       return
     }
     setLoading(true)
     try {
       const { data } = await registerAPI(form)
-      await login(data, data.token || '')
+      // Go to OTP screen, pass user data & token to use after verification
+      navigation.navigate('OTP', {
+        email:    form.email,
+        userData: data,
+        token:    data.token || '',
+      })
     } catch (err: any) {
-      Alert.alert('Registration Failed', err.response?.data?.error || 'Something went wrong')
+      Alert.alert(
+        isArabic ? 'فشل التسجيل' : 'Registration Failed',
+        err.response?.data?.error || (isArabic ? 'حدث خطأ ما' : 'Something went wrong')
+      )
     } finally {
       setLoading(false)
     }
@@ -40,11 +52,16 @@ export default function RegisterScreen({ navigation }: any) {
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
 
-      <Text style={styles.title}>Create Account</Text>
-      <Text style={styles.subtitle}>إنشاء حساب جديد في فرصة</Text>
+      {/* Lang toggle */}
+      <TouchableOpacity style={styles.langBtn} onPress={toggleLang}>
+        <Text style={styles.langBtnText}>{lang === 'en' ? 'AR' : 'EN'}</Text>
+      </TouchableOpacity>
+
+      <Text style={[styles.title, { textAlign: 'center' }]}>{tr.createAccount}</Text>
+      <Text style={[styles.subtitle, { textAlign: 'center' }]}>{tr.joinFursa}</Text>
 
       {/* Role Selection */}
-      <Text style={styles.label}>I am a... / أنا...</Text>
+      <Text style={[styles.label, { textAlign: textDir }]}>{tr.iAmA}</Text>
       <View style={styles.roleRow}>
         {roles.map(r => (
           <TouchableOpacity
@@ -56,51 +73,61 @@ export default function RegisterScreen({ navigation }: any) {
             <Text style={[styles.roleLabel, form.role === r.id && styles.roleLabelActive]}>
               {r.label}
             </Text>
-            <Text style={[styles.roleLabelAr, form.role === r.id && { color: colors.primary }]}>
-              {r.labelAr}
-            </Text>
-            <Text style={styles.roleDesc}>{r.desc}</Text>
+            <Text style={[styles.roleDesc, { textAlign: 'center' }]}>{r.desc}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Fields */}
       <View style={styles.card}>
-        <Text style={styles.label}>Username / اسم المستخدم</Text>
+        <Text style={[styles.label, { textAlign: textDir }]}>{tr.username}</Text>
         <View style={styles.inputBox}>
-          <TextInput style={styles.input} placeholder="Enter username"
-            placeholderTextColor={colors.textDim} value={form.username}
-            onChangeText={v => set('username', v)} autoCapitalize="none" />
+          <TextInput
+            style={[styles.input, { textAlign: textDir }]}
+            placeholder={tr.enterUsername}
+            placeholderTextColor={colors.textDim}
+            value={form.username}
+            onChangeText={v => set('username', v)}
+            autoCapitalize="none"
+          />
         </View>
 
-        <Text style={styles.label}>Email / البريد الإلكتروني</Text>
+        <Text style={[styles.label, { textAlign: textDir }]}>{tr.email}</Text>
         <View style={styles.inputBox}>
-          <TextInput style={styles.input} placeholder="Enter email"
-            placeholderTextColor={colors.textDim} value={form.email}
-            onChangeText={v => set('email', v)} keyboardType="email-address" autoCapitalize="none" />
+          <TextInput
+            style={[styles.input, { textAlign: textDir }]}
+            placeholder={tr.enterEmail}
+            placeholderTextColor={colors.textDim}
+            value={form.email}
+            onChangeText={v => set('email', v)}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
         </View>
 
-        <Text style={styles.label}>Password / كلمة المرور</Text>
+        <Text style={[styles.label, { textAlign: textDir }]}>{tr.password}</Text>
         <View style={styles.inputBox}>
-          <TextInput style={[styles.input, { flex: 1 }]} placeholder="Create password"
-            placeholderTextColor={colors.textDim} value={form.password}
-            onChangeText={v => set('password', v)} secureTextEntry={!showPass} />
+          <TextInput
+            style={[styles.input, { flex: 1, textAlign: textDir }]}
+            placeholder={tr.createPassword}
+            placeholderTextColor={colors.textDim}
+            value={form.password}
+            onChangeText={v => set('password', v)}
+            secureTextEntry={!showPass}
+          />
           <TouchableOpacity onPress={() => setShowPass(v => !v)} style={{ padding: spacing.xs }}>
             <Text style={{ fontSize: 16 }}>{showPass ? '🙈' : '👁️'}</Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading}>
-          {loading
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.btnText}>Create Account / إنشاء الحساب</Text>
-          }
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{tr.createAccount}</Text>}
         </TouchableOpacity>
 
         <View style={styles.row}>
-          <Text style={styles.mutedText}>Already have an account? </Text>
+          <Text style={styles.mutedText}>{tr.alreadyAccount} </Text>
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.linkText}>Sign In / تسجيل الدخول</Text>
+            <Text style={styles.linkText}>{tr.signIn}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -109,33 +136,21 @@ export default function RegisterScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1, backgroundColor: colors.bg,
-    padding: spacing.lg, paddingTop: spacing.xl,
-  },
-  title:    { color: colors.text, fontSize: font.xxl, fontWeight: '800', textAlign: 'center' },
-  subtitle: { color: colors.textMuted, fontSize: font.sm, textAlign: 'center', marginBottom: spacing.lg, marginTop: spacing.xs },
+  container: { flexGrow: 1, backgroundColor: colors.bg, padding: spacing.lg, paddingTop: spacing.xl },
+  langBtn:      { alignSelf: 'flex-end', backgroundColor: colors.card, borderRadius: radius.full, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm },
+  langBtnText:  { color: colors.primary, fontSize: font.sm, fontWeight: '800' },
+  title:    { color: colors.text, fontSize: font.xxl, fontWeight: '800' },
+  subtitle: { color: colors.textMuted, fontSize: font.sm, marginBottom: spacing.lg, marginTop: spacing.xs },
   label:    { color: colors.textMuted, fontSize: font.sm, marginBottom: spacing.xs, marginTop: spacing.sm },
   roleRow:  { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  roleCard: {
-    flex: 1, backgroundColor: colors.card, borderRadius: radius.lg,
-    padding: spacing.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border,
-  },
+  roleCard: { flex: 1, backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   roleCardActive: { borderColor: colors.primary, backgroundColor: 'rgba(255,107,53,0.08)' },
   roleIcon:       { fontSize: 28, marginBottom: spacing.xs },
-  roleLabel:      { color: colors.textMuted, fontWeight: '700', fontSize: font.base },
+  roleLabel:      { color: colors.textMuted, fontWeight: '700', fontSize: font.base, marginBottom: 4 },
   roleLabelActive:{ color: colors.primary },
-  roleLabelAr:    { color: colors.textDim, fontSize: font.sm, marginBottom: spacing.xs },
-  roleDesc:       { color: colors.textDim, fontSize: 11, textAlign: 'center' },
-  card: {
-    backgroundColor: colors.card, borderRadius: radius.xl,
-    padding: spacing.lg, borderWidth: 1, borderColor: colors.border,
-  },
-  inputBox: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radius.md, paddingHorizontal: spacing.md,
-  },
+  roleDesc:       { color: colors.textDim, fontSize: 11 },
+  card: { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
+  inputBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md },
   input:   { color: colors.text, fontSize: font.base, paddingVertical: 14, flex: 1 },
   btn:     { backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 16, alignItems: 'center', marginTop: spacing.lg },
   btnText: { color: '#fff', fontWeight: '700', fontSize: font.base },
