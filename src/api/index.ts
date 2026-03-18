@@ -21,9 +21,11 @@ api.interceptors.request.use(async (config) => {
 export default api
 
 // Auth
-export const loginAPI       = (data: object)         => api.post('/auth/login', data)
-export const registerAPI    = (data: object)         => api.post('/auth/signup', data)
-export const logoutAPI      = ()                     => api.post('/auth/logout')
+export const loginAPI          = (data: object)      => api.post('/auth/login', data)
+export const registerAPI       = (data: object)      => api.post('/auth/signup', data)
+export const logoutAPI         = ()                  => api.post('/auth/logout')
+export const googleSignInAPI   = (data: object)      => api.post('/auth/google', data)
+export const saveFcmTokenAPI   = (token: string)     => api.put('/user/fcm-token', { token })
 
 // Projects
 export const getProjectsAPI = (params?: object)      => api.get('/project', { params })

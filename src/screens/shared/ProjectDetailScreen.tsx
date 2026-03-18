@@ -5,6 +5,7 @@ import {
 } from 'react-native'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
+import { useLang } from '../../context/LanguageContext'
 import {
   getProjectAPI, getProposalsAPI, acceptProposalAPI, submitProposalAPI,
 } from '../../api'
@@ -20,15 +21,32 @@ const statusColors: Record<string, string> = {
   disputed:      colors.error,
 }
 
-function timeAgo(iso: string) {
+const statusLabels: Record<string, { en: string; ar: string }> = {
+  open:             { en: 'Open',         ar: 'مفتوح' },
+  'in-progress':    { en: 'In Progress',  ar: 'جاري العمل' },
+  completed:        { en: 'Completed',    ar: 'مكتمل' },
+  cancelled:        { en: 'Cancelled',    ar: 'ملغى' },
+  disputed:         { en: 'Disputed',     ar: 'متنازع عليه' },
+  'pending-approval':{ en: 'Pending Review', ar: 'قيد المراجعة' },
+}
+
+function timeAgo(iso: string, isArabic: boolean) {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+  if (isArabic) {
+    return d === 0 ? 'اليوم' : d === 1 ? 'أمس' : `منذ ${d} أيام`
+  }
   return d === 0 ? 'Today' : d === 1 ? 'Yesterday' : `${d} days ago`
 }
 
 // ─── Proposal Card ───────────────────────────────────────────────────────────
 
-function ProposalCard({ proposal, onAccept, isClient }: { proposal: any; onAccept: (id: string, bid: number) => void; isClient: boolean }) {
-  const fl = proposal.freelancerId || {}
+function ProposalCard({ proposal, onAccept, isClient, isArabic }: {
+  proposal: any; onAccept: (id: string, bid: number) => void
+  isClient: boolean; isArabic: boolean
+}) {
+  const fl  = proposal.freelancerId || {}
+  const dir = isArabic ? 'right' as const : 'left' as const
+
   return (
     <View style={styles.proposalCard}>
       <View style={styles.proposalHeader}>
@@ -36,20 +54,26 @@ function ProposalCard({ proposal, onAccept, isClient }: { proposal: any; onAccep
           <Text style={styles.avatarText}>{(fl.username || 'F')[0].toUpperCase()}</Text>
         </View>
         <View style={{ flex: 1, marginLeft: spacing.sm }}>
-          <Text style={styles.proposalName}>{fl.username || 'Freelancer'}</Text>
+          <Text style={styles.proposalName}>{fl.username || (isArabic ? 'مستقل' : 'Freelancer')}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text style={styles.starText}>⭐</Text>
             <Text style={styles.ratingText}>{fl.rating?.toFixed(1) || '0.0'}</Text>
-            <Text style={styles.dimText}> · {fl.totalProjects || 0} projects</Text>
+            <Text style={styles.dimText}>
+              {' · '}{fl.totalProjects || 0}{' '}{isArabic ? 'مشروع' : 'projects'}
+            </Text>
           </View>
         </View>
         <View>
           <Text style={styles.bidAmount}>${proposal.bid}</Text>
-          <Text style={styles.deliveryText}>{proposal.deliveryTime} days</Text>
+          <Text style={styles.deliveryText}>
+            {proposal.deliveryTime} {isArabic ? 'يوم' : 'days'}
+          </Text>
         </View>
       </View>
 
-      <Text style={styles.coverLetter} numberOfLines={3}>{proposal.coverLetter}</Text>
+      <Text style={[styles.coverLetter, { textAlign: dir }]} numberOfLines={3}>
+        {proposal.coverLetter}
+      </Text>
 
       {fl.skills?.length > 0 && (
         <View style={styles.skillsRow}>
@@ -63,13 +87,17 @@ function ProposalCard({ proposal, onAccept, isClient }: { proposal: any; onAccep
 
       {isClient && proposal.status === 'pending' && (
         <TouchableOpacity style={styles.acceptBtn} onPress={() => onAccept(proposal._id, proposal.bid)}>
-          <Text style={styles.acceptBtnText}>✅ Accept This Bid</Text>
+          <Text style={styles.acceptBtnText}>
+            ✅ {isArabic ? 'قبول هذا العرض' : 'Accept This Bid'}
+          </Text>
         </TouchableOpacity>
       )}
 
       {proposal.status === 'accepted' && (
         <View style={styles.acceptedBadge}>
-          <Text style={styles.acceptedBadgeText}>✅ Accepted</Text>
+          <Text style={styles.acceptedBadgeText}>
+            ✅ {isArabic ? 'مقبول' : 'Accepted'}
+          </Text>
         </View>
       )}
     </View>
@@ -78,15 +106,18 @@ function ProposalCard({ proposal, onAccept, isClient }: { proposal: any; onAccep
 
 // ─── Bid Modal ───────────────────────────────────────────────────────────────
 
-function BidModal({ projectId, visible, onClose, onSubmit }: any) {
-  const [bid, setBid]             = useState('')
+function BidModal({ projectId, visible, onClose, onSubmit, isArabic }: any) {
+  const [bid, setBid]               = useState('')
   const [deliveryTime, setDelivery] = useState('')
-  const [coverLetter, setCover]   = useState('')
-  const [loading, setLoading]     = useState(false)
+  const [coverLetter, setCover]     = useState('')
+  const [loading, setLoading]       = useState(false)
 
   const submit = async () => {
     if (!bid || !deliveryTime || !coverLetter.trim()) {
-      return Alert.alert('Missing Info', 'Please fill all fields.')
+      return Alert.alert(
+        isArabic ? 'بيانات ناقصة' : 'Missing Info',
+        isArabic ? 'يرجى ملء جميع الحقول.' : 'Please fill all fields.'
+      )
     }
     setLoading(true)
     await onSubmit({ bid: Number(bid), deliveryTime: Number(deliveryTime), coverLetter })
@@ -98,27 +129,50 @@ function BidModal({ projectId, visible, onClose, onSubmit }: any) {
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={styles.modalBox}>
-          <Text style={styles.modalTitle}>Submit Your Bid</Text>
+          <Text style={[styles.modalTitle, { textAlign: isArabic ? 'right' : 'left' }]}>
+            {isArabic ? '💼 قدم عرضك' : '💼 Submit Your Bid'}
+          </Text>
 
-          <Text style={styles.fieldLabel}>Bid Amount ($)</Text>
-          <TextInput style={styles.input} placeholder="e.g. 500" placeholderTextColor={colors.textDim}
-            keyboardType="numeric" value={bid} onChangeText={setBid} />
+          <Text style={[styles.fieldLabel, { textAlign: isArabic ? 'right' : 'left' }]}>
+            {isArabic ? 'قيمة العرض ($)' : 'Bid Amount ($)'}
+          </Text>
+          <TextInput style={styles.input}
+            placeholder={isArabic ? 'مثال: 500' : 'e.g. 500'}
+            placeholderTextColor={colors.textDim}
+            keyboardType="numeric" value={bid} onChangeText={setBid}
+            textAlign={isArabic ? 'right' : 'left'}
+          />
 
-          <Text style={styles.fieldLabel}>Delivery Time (days)</Text>
-          <TextInput style={styles.input} placeholder="e.g. 7" placeholderTextColor={colors.textDim}
-            keyboardType="numeric" value={deliveryTime} onChangeText={setDelivery} />
+          <Text style={[styles.fieldLabel, { textAlign: isArabic ? 'right' : 'left' }]}>
+            {isArabic ? 'مدة التسليم (أيام)' : 'Delivery Time (days)'}
+          </Text>
+          <TextInput style={styles.input}
+            placeholder={isArabic ? 'مثال: 7' : 'e.g. 7'}
+            placeholderTextColor={colors.textDim}
+            keyboardType="numeric" value={deliveryTime} onChangeText={setDelivery}
+            textAlign={isArabic ? 'right' : 'left'}
+          />
 
-          <Text style={styles.fieldLabel}>Cover Letter</Text>
+          <Text style={[styles.fieldLabel, { textAlign: isArabic ? 'right' : 'left' }]}>
+            {isArabic ? 'خطاب التقديم' : 'Cover Letter'}
+          </Text>
           <TextInput style={[styles.input, styles.textarea]}
-            placeholder="Describe why you're the best fit..." placeholderTextColor={colors.textDim}
-            multiline value={coverLetter} onChangeText={setCover} />
+            placeholder={isArabic ? 'اشرح لماذا أنت الأنسب لهذا المشروع...' : "Describe why you're the best fit..."}
+            placeholderTextColor={colors.textDim}
+            multiline value={coverLetter} onChangeText={setCover}
+            textAlign={isArabic ? 'right' : 'left'}
+            textAlignVertical="top"
+          />
 
           <View style={styles.modalBtns}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              <Text style={styles.cancelBtnText}>{isArabic ? 'إلغاء' : 'Cancel'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.submitBtn} onPress={submit} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.submitBtnText}>Submit Bid</Text>}
+              {loading
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.submitBtnText}>{isArabic ? 'إرسال العرض' : 'Submit Bid'}</Text>
+              }
             </TouchableOpacity>
           </View>
         </View>
@@ -130,16 +184,18 @@ function BidModal({ projectId, visible, onClose, onSubmit }: any) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ProjectDetailScreen() {
-  const { user }   = useAuth()
-  const navigation = useNavigation<any>()
-  const route      = useRoute<any>()
-  const { projectId } = route.params || {}
-  const isClient   = user?.role === 'client'
+  const { user }             = useAuth()
+  const { isArabic, toggleLang, lang } = useLang()
+  const navigation           = useNavigation<any>()
+  const route                = useRoute<any>()
+  const { projectId }        = route.params || {}
+  const isClient             = user?.role === 'client'
+  const dir                  = isArabic ? 'right' as const : 'left' as const
 
-  const [project, setProject]     = useState<any>(null)
-  const [proposals, setProposals] = useState<any[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [bidModal, setBidModal]   = useState(false)
+  const [project,    setProject]    = useState<any>(null)
+  const [proposals,  setProposals]  = useState<any[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [bidModal,   setBidModal]   = useState(false)
   const [myProposal, setMyProposal] = useState<any>(null)
 
   const load = useCallback(async () => {
@@ -163,21 +219,31 @@ export default function ProjectDetailScreen() {
 
   const handleAccept = async (proposalId: string, bidAmount: number) => {
     Alert.alert(
-      'Accept Bid?',
-      `Accepting will:\n• Lock $${bidAmount} from your wallet into escrow\n• Start the project\n• Create a contract\n\nMake sure your wallet has at least $${bidAmount}.`,
+      isArabic ? 'قبول العرض؟' : 'Accept Bid?',
+      isArabic
+        ? `قبول هذا العرض سيؤدي إلى:\n• احتجاز $${bidAmount} من محفظتك في الضمان\n• بدء المشروع\n• إنشاء عقد\n\nتأكد أن رصيدك لا يقل عن $${bidAmount}`
+        : `Accepting will:\n• Lock $${bidAmount} from your wallet into escrow\n• Start the project\n• Create a contract\n\nMake sure your wallet has at least $${bidAmount}.`,
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Accept & Lock Funds', style: 'default', onPress: async () => {
+        { text: isArabic ? 'إلغاء' : 'Cancel', style: 'cancel' },
+        { text: isArabic ? 'قبول وتأمين الأموال' : 'Accept & Lock Funds', onPress: async () => {
           try {
             await acceptProposalAPI(proposalId)
-            Alert.alert('🎉 Contract Created!', `$${bidAmount} has been locked in escrow. The project is now in progress.`)
+            Alert.alert(
+              isArabic ? '🎉 تم إنشاء العقد!' : '🎉 Contract Created!',
+              isArabic
+                ? `تم احتجاز $${bidAmount} في الضمان. المشروع الآن قيد التنفيذ.`
+                : `$${bidAmount} has been locked in escrow. The project is now in progress.`
+            )
             load()
           } catch (e: any) {
             const errMsg = e?.response?.data?.error || 'Failed to accept'
             if (errMsg.includes('Insufficient')) {
-              Alert.alert('💳 Insufficient Balance', errMsg + '\n\nGo to Wallet → Add Funds to top up.')
+              Alert.alert(
+                isArabic ? '💳 رصيد غير كافٍ' : '💳 Insufficient Balance',
+                errMsg + (isArabic ? '\n\nاذهب إلى المحفظة وأضف رصيداً.' : '\n\nGo to Wallet → Add Funds to top up.')
+              )
             } else {
-              Alert.alert('Error', errMsg)
+              Alert.alert(isArabic ? 'خطأ' : 'Error', errMsg)
             }
           }
         }},
@@ -188,11 +254,14 @@ export default function ProjectDetailScreen() {
   const handleBid = async (formData: any) => {
     try {
       await submitProposalAPI({ projectId, ...formData })
-      Alert.alert('✅ Bid Submitted!', 'Your proposal was sent to the client.')
+      Alert.alert(
+        isArabic ? '✅ تم إرسال العرض!' : '✅ Bid Submitted!',
+        isArabic ? 'تم إرسال عرضك للعميل.' : 'Your proposal was sent to the client.'
+      )
       setBidModal(false)
       load()
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.error || 'Failed to submit bid')
+      Alert.alert(isArabic ? 'خطأ' : 'Error', e?.response?.data?.error || 'Failed to submit bid')
     }
   }
 
@@ -204,43 +273,54 @@ export default function ProjectDetailScreen() {
 
   if (!project) return (
     <View style={styles.center}>
-      <Text style={styles.errorText}>Project not found</Text>
+      <Text style={styles.errorText}>{isArabic ? 'المشروع غير موجود' : 'Project not found'}</Text>
     </View>
   )
 
-  const isInProgress = project.status === 'in-progress'
-  const statusColor  = statusColors[project.status] || colors.info
+  const isInProgress = ['in-progress', 'pending-approval', 'completed'].includes(project.status)
+  const sc           = statusColors[project.status] || colors.info
+  const sl           = statusLabels[project.status] || { en: project.status, ar: project.status }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+
+      {/* ── Header ── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>Project Details</Text>
-        <View style={{ width: 40 }} />
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {isArabic ? 'تفاصيل المشروع' : 'Project Details'}
+        </Text>
+        <TouchableOpacity style={styles.langBtn} onPress={toggleLang}>
+          <Text style={styles.langBtnText}>{lang === 'en' ? 'AR' : 'EN'}</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Project Info Card */}
+
+        {/* ── Project Info ── */}
         <View style={styles.infoCard}>
           <View style={styles.statusRow}>
-            <View style={[styles.statusBadge, { backgroundColor: statusColor + '22', borderColor: statusColor }]}>
-              <Text style={[styles.statusText, { color: statusColor }]}>{project.status}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: sc + '22', borderColor: sc }]}>
+              <Text style={[styles.statusText, { color: sc }]}>
+                {isArabic ? sl.ar : sl.en}
+              </Text>
             </View>
-            <View style={[styles.categoryBadge]}>
-              <Text style={styles.categoryText}>{project.category}</Text>
-            </View>
+            {project.category && (
+              <View style={styles.categoryBadge}>
+                <Text style={styles.categoryText}>{project.category}</Text>
+              </View>
+            )}
           </View>
 
-          <Text style={styles.projectTitle}>{project.title}</Text>
-          <Text style={styles.projectDesc}>{project.description}</Text>
+          <Text style={[styles.projectTitle, { textAlign: dir }]}>{project.title}</Text>
+          <Text style={[styles.projectDesc, { textAlign: dir }]}>{project.description}</Text>
 
-          {/* Budget & deadline */}
+          {/* Meta grid */}
           <View style={styles.metaGrid}>
             <View style={styles.metaBox}>
-              <Text style={styles.metaLabel}>💰 Budget</Text>
+              <Text style={styles.metaLabel}>💰 {isArabic ? 'الميزانية' : 'Budget'}</Text>
               <Text style={styles.metaValue}>
                 {project.budgetType === 'fixed'
                   ? `$${project.budget}`
@@ -248,24 +328,30 @@ export default function ProjectDetailScreen() {
               </Text>
             </View>
             <View style={styles.metaBox}>
-              <Text style={styles.metaLabel}>📅 Posted</Text>
-              <Text style={styles.metaValue}>{timeAgo(project.createdAt)}</Text>
+              <Text style={styles.metaLabel}>📅 {isArabic ? 'النشر' : 'Posted'}</Text>
+              <Text style={styles.metaValue}>{timeAgo(project.createdAt, isArabic)}</Text>
             </View>
             <View style={styles.metaBox}>
-              <Text style={styles.metaLabel}>📋 Proposals</Text>
+              <Text style={styles.metaLabel}>📋 {isArabic ? 'العروض' : 'Proposals'}</Text>
               <Text style={styles.metaValue}>{proposals.length || project.proposalCount || 0}</Text>
             </View>
             <View style={styles.metaBox}>
-              <Text style={styles.metaLabel}>⏱ Deadline</Text>
-              <Text style={styles.metaValue}>{project.deadline ? `${project.deadline} days` : 'Open'}</Text>
+              <Text style={styles.metaLabel}>⏱ {isArabic ? 'الموعد' : 'Deadline'}</Text>
+              <Text style={styles.metaValue}>
+                {project.deadline
+                  ? `${project.deadline} ${isArabic ? 'يوم' : 'days'}`
+                  : (isArabic ? 'مفتوح' : 'Open')}
+              </Text>
             </View>
           </View>
 
           {/* Skills */}
           {project.skills?.length > 0 && (
             <View style={styles.skillsSection}>
-              <Text style={styles.sectionLabel}>Required Skills</Text>
-              <View style={styles.skillsRow}>
+              <Text style={[styles.sectionLabel, { textAlign: dir }]}>
+                {isArabic ? 'المهارات المطلوبة' : 'Required Skills'}
+              </Text>
+              <View style={[styles.skillsRow, { justifyContent: isArabic ? 'flex-end' : 'flex-start' }]}>
                 {project.skills.map((s: string) => (
                   <View key={s} style={styles.skillChip}>
                     <Text style={styles.skillText}>{s}</Text>
@@ -276,45 +362,65 @@ export default function ProjectDetailScreen() {
           )}
         </View>
 
-        {/* Freelancer actions */}
+        {/* ── Freelancer: Submit bid ── */}
         {!isClient && project.status === 'open' && (
           <View style={styles.actionSection}>
             {!myProposal ? (
               <TouchableOpacity style={styles.primaryBtn} onPress={() => setBidModal(true)}>
-                <Text style={styles.primaryBtnText}>💼 Submit Your Bid</Text>
+                <Text style={styles.primaryBtnText}>
+                  💼 {isArabic ? 'قدم عرضك' : 'Submit Your Bid'}
+                </Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.myBidBanner}>
-                <Text style={styles.myBidTitle}>Your Bid Status: {myProposal.status}</Text>
-                <Text style={styles.myBidSub}>Amount: ${myProposal.bid} · {myProposal.deliveryTime} days</Text>
+                <Text style={[styles.myBidTitle, { textAlign: dir }]}>
+                  {isArabic ? `حالة عرضك: ${statusLabels[myProposal.status]?.ar || myProposal.status}` : `Your Bid Status: ${myProposal.status}`}
+                </Text>
+                <Text style={[styles.myBidSub, { textAlign: dir }]}>
+                  {isArabic
+                    ? `المبلغ: $${myProposal.bid} · ${myProposal.deliveryTime} يوم`
+                    : `Amount: $${myProposal.bid} · ${myProposal.deliveryTime} days`}
+                </Text>
               </View>
             )}
           </View>
         )}
 
-        {/* View Contract button */}
+        {/* ── View Contract button ── */}
         {isInProgress && (
           <TouchableOpacity style={styles.contractBtn}
             onPress={() => navigation.navigate('ContractScreen', { projectId })}>
-            <Text style={styles.contractBtnText}>📄 View Contract & Milestones →</Text>
+            <Text style={styles.contractBtnText}>
+              📄 {isArabic ? 'عرض العقد والمراحل ←' : 'View Contract & Milestones →'}
+            </Text>
           </TouchableOpacity>
         )}
 
-        {/* Proposals section (client only) */}
+        {/* ── Client: Proposals list ── */}
         {isClient && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Bids Received ({proposals.length})
+            <Text style={[styles.sectionTitle, { textAlign: dir }]}>
+              {isArabic
+                ? `العروض المستلمة (${proposals.length})`
+                : `Bids Received (${proposals.length})`}
             </Text>
             {proposals.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No bids yet. Share your project to get more freelancers!</Text>
+                <Text style={[styles.emptyText, { textAlign: 'center' }]}>
+                  {isArabic
+                    ? 'لا توجد عروض بعد. شارك مشروعك للحصول على مزيد من المستقلين!'
+                    : 'No bids yet. Share your project to get more freelancers!'}
+                </Text>
               </View>
             ) : (
               proposals.map(p => (
-                <ProposalCard key={p._id} proposal={p}
+                <ProposalCard
+                  key={p._id}
+                  proposal={p}
                   isClient={isClient}
-                  onAccept={handleAccept} />
+                  isArabic={isArabic}
+                  onAccept={handleAccept}
+                />
               ))
             )}
           </View>
@@ -328,6 +434,7 @@ export default function ProjectDetailScreen() {
         visible={bidModal}
         onClose={() => setBidModal(false)}
         onSubmit={handleBid}
+        isArabic={isArabic}
       />
     </View>
   )
@@ -344,11 +451,13 @@ const styles = StyleSheet.create({
   backBtn:     { width: 40, height: 40, borderRadius: radius.full, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   backArrow:   { color: colors.text, fontSize: font.lg, lineHeight: 22 },
   headerTitle: { flex: 1, color: colors.text, fontSize: font.lg, fontWeight: '700', textAlign: 'center' },
+  langBtn:     { backgroundColor: colors.card, borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: colors.border },
+  langBtnText: { color: colors.primary, fontSize: font.sm, fontWeight: '800' },
 
   infoCard:  { margin: spacing.md, backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
   statusRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
   statusBadge:   { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, borderWidth: 1 },
-  statusText:    { fontSize: font.sm, fontWeight: '700', textTransform: 'capitalize' },
+  statusText:    { fontSize: font.sm, fontWeight: '700' },
   categoryBadge: { backgroundColor: colors.primary + '20', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full },
   categoryText:  { color: colors.primary, fontSize: font.sm, fontWeight: '600' },
 
@@ -370,7 +479,7 @@ const styles = StyleSheet.create({
   primaryBtn:    { backgroundColor: colors.primary, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center' },
   primaryBtnText:{ color: '#fff', fontWeight: '800', fontSize: font.base },
   myBidBanner:   { backgroundColor: colors.success + '22', borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.success + '44' },
-  myBidTitle:    { color: colors.success, fontWeight: '700', fontSize: font.base, textTransform: 'capitalize' },
+  myBidTitle:    { color: colors.success, fontWeight: '700', fontSize: font.base },
   myBidSub:      { color: colors.textMuted, fontSize: font.sm, marginTop: 4 },
 
   contractBtn:     { marginHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.info + '22', borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', borderWidth: 1, borderColor: colors.info + '44' },
@@ -396,7 +505,7 @@ const styles = StyleSheet.create({
   acceptedBadgeText: { color: colors.success, fontWeight: '700', fontSize: font.sm },
 
   emptyState: { alignItems: 'center', paddingVertical: 40 },
-  emptyText:  { color: colors.textMuted, fontSize: font.base, textAlign: 'center' },
+  emptyText:  { color: colors.textMuted, fontSize: font.base },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { setupPushNotifications } from '../config/fcm'
 
 interface User {
   _id: string
@@ -56,6 +57,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ])
     setUser(userData)
     setToken(tkn)
+    // Register FCM token so the server can send push notifications to this device
+    setupPushNotifications().catch(() => {})
   }
 
   const logout = async () => {

@@ -1,36 +1,43 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch,
-  TextInput, RefreshControl, Modal, Alert, ActivityIndicator,
+  TextInput, RefreshControl, Modal, Alert, ActivityIndicator, Animated,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
-import { getMyProjectsAPI, getProjectsAPI, submitProposalAPI } from '../../api'
+import {
+  getMyProjectsAPI, getProjectsAPI, submitProposalAPI, getMyProposalsAPI,
+} from '../../api'
 import { colors, spacing, radius, font } from '../../theme'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const statusColor: Record<string, string> = {
-  open:          colors.info,
-  'in-progress': colors.warning,
-  completed:     colors.success,
-  cancelled:     colors.error,
-  disputed:      colors.error,
+  open:             colors.info,
+  'in-progress':    colors.warning,
+  completed:        colors.success,
+  cancelled:        colors.error,
+  disputed:         colors.error,
 }
 
-function daysLeft(deadline: string) {
+function daysLeft(deadline: string, isArabic: boolean) {
   const d = Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000)
-  return d > 0 ? `${d}d` : 'Due'
+  if (isArabic) return d > 0 ? `${d} يوم` : 'انتهى'
+  return d > 0 ? `${d}d left` : 'Due'
 }
 
-function Badge({ text, color }: { text: string; color: string }) {
-  return (
-    <View style={[styles.badge, { backgroundColor: color + '22', borderColor: color + '44' }]}>
-      <Text style={[styles.badgeText, { color }]}>{text}</Text>
-    </View>
-  )
+function greeting(isArabic: boolean) {
+  const h = new Date().getHours()
+  if (isArabic) {
+    if (h < 12) return 'صباح الخير'
+    if (h < 17) return 'مساء الخير'
+    return 'مساء النور'
+  }
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
 }
 
 // ─── AR/EN Language Toggle ────────────────────────────────────────────────────
@@ -52,73 +59,170 @@ function LangToggle() {
   )
 }
 
-// ─── Client Project card ──────────────────────────────────────────────────────
+// ─── Categories ───────────────────────────────────────────────────────────────
 
-function ClientProjectCard({ project, onPress }: { project: any; onPress: () => void }) {
-  const { tr, isArabic } = useLang()
-  const sc = statusColor[project.status] || colors.info
+const CATEGORIES = ['All', 'Design', 'Development', 'Writing', 'Marketing', 'Video', 'Translation', 'Data']
+
+// ─── Freelancer Project Card (compact, for Recommended) ──────────────────────
+
+function RecommendedCard({ project, onBid, onPress, isArabic, matchScore }: {
+  project: any; onBid: (p: any) => void; onPress: () => void
+  isArabic: boolean; matchScore: number
+}) {
   const dir = isArabic ? 'right' as const : 'left' as const
   return (
-    <TouchableOpacity style={styles.projectCard} onPress={onPress} activeOpacity={0.8}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-        <Text style={[styles.projectTitle, { textAlign: dir }]} numberOfLines={1}>{project.title}</Text>
-        <Badge text={project.status} color={sc} />
+    <TouchableOpacity style={styles.recCard} onPress={onPress} activeOpacity={0.85}>
+      {/* Match badge */}
+      {matchScore > 0 && (
+        <View style={styles.matchBadge}>
+          <Text style={styles.matchBadgeText}>
+            {matchScore}% {isArabic ? 'تطابق' : 'match'}
+          </Text>
+        </View>
+      )}
+
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+        {/* Category icon */}
+        <View style={styles.recCatIcon}>
+          <Text style={{ fontSize: 20 }}>{categoryIcon(project.category)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.recTitle, { textAlign: dir }]} numberOfLines={2}>
+            {project.title}
+          </Text>
+          <View style={styles.recMeta}>
+            <View style={[styles.catPill, { alignSelf: isArabic ? 'flex-end' : 'flex-start' }]}>
+              <Text style={styles.catPillText}>{project.category}</Text>
+            </View>
+            <Text style={styles.recBudget}>💰 ${project.budget}</Text>
+          </View>
+        </View>
       </View>
-      <Text style={[styles.projectDesc, { textAlign: dir }]} numberOfLines={2}>{project.description}</Text>
-      <View style={styles.projectMeta}>
-        <Text style={styles.metaText}>💰 ${project.budget}</Text>
-        <Text style={styles.metaText}>📋 {project.proposals?.length ?? 0} {tr.bids}</Text>
-        <Text style={styles.metaText}>⏰ {daysLeft(project.deadline)}</Text>
+
+      <Text style={[styles.recDesc, { textAlign: dir }]} numberOfLines={2}>
+        {project.description}
+      </Text>
+
+      {/* Skills needed */}
+      {project.skills?.length > 0 && (
+        <View style={[styles.skillsRow, { justifyContent: isArabic ? 'flex-end' : 'flex-start' }]}>
+          {project.skills.slice(0, 3).map((s: string) => (
+            <View key={s} style={styles.skillChip}>
+              <Text style={styles.skillText}>{s}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <View style={styles.recFooter}>
+        <View style={styles.recStats}>
+          <Text style={styles.recStat}>👥 {project.proposals?.length ?? 0}</Text>
+          <Text style={styles.recStat}>⏰ {daysLeft(project.deadline, isArabic)}</Text>
+          {project.clientId?.username && (
+            <Text style={styles.recStat}>
+              👤 {project.clientId.username}
+            </Text>
+          )}
+        </View>
+        <TouchableOpacity
+          style={styles.bidBtn}
+          onPress={(e) => { e.stopPropagation?.(); onBid(project) }}
+        >
+          <Text style={styles.bidBtnText}>
+            💼 {isArabic ? 'قدم عرضاً' : 'Place Bid'}
+          </Text>
+        </TouchableOpacity>
       </View>
-      <Text style={[styles.tapHint, { textAlign: isArabic ? 'left' : 'right' }]}>{tr.tapDetails}</Text>
     </TouchableOpacity>
   )
 }
 
-// ─── Freelancer Project card ──────────────────────────────────────────────────
+// ─── Freelancer Browse card (horizontal compact) ──────────────────────────────
 
-function FreelancerProjectCard({ project, onBid, onPress }: {
-  project: any; onBid: (p: any) => void; onPress: () => void
+function BrowseCard({ project, onBid, onPress, isArabic }: {
+  project: any; onBid: (p: any) => void; onPress: () => void; isArabic: boolean
 }) {
-  const { tr, isArabic } = useLang()
   const dir = isArabic ? 'right' as const : 'left' as const
   return (
-    <TouchableOpacity style={styles.projectCard} onPress={onPress} activeOpacity={0.85}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-        <Text style={[styles.projectTitle, { textAlign: dir }]} numberOfLines={1}>{project.title}</Text>
-        <Badge text={project.category} color={colors.info} />
+    <TouchableOpacity style={styles.browseCard} onPress={onPress} activeOpacity={0.85}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={styles.browseCatIcon}>
+          <Text style={{ fontSize: 18 }}>{categoryIcon(project.category)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.browseTitle, { textAlign: dir }]} numberOfLines={1}>
+            {project.title}
+          </Text>
+          <View style={styles.browseMeta}>
+            <Text style={styles.browseBudget}>💰 ${project.budget}</Text>
+            <Text style={styles.browseStat}>· {project.proposals?.length ?? 0} {isArabic ? 'عروض' : 'bids'}</Text>
+            <Text style={styles.browseStat}>· {daysLeft(project.deadline, isArabic)}</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.bidBtnSm}
+          onPress={(e) => { e.stopPropagation?.(); onBid(project) }}
+        >
+          <Text style={styles.bidBtnSmText}>{isArabic ? 'قدّم' : 'Bid'}</Text>
+        </TouchableOpacity>
       </View>
-      <Text style={[styles.projectDesc, { textAlign: dir }]} numberOfLines={2}>{project.description}</Text>
-      <View style={styles.projectMeta}>
+    </TouchableOpacity>
+  )
+}
+
+function categoryIcon(cat: string) {
+  const icons: Record<string, string> = {
+    Design: '🎨', Development: '💻', Writing: '✍️', Marketing: '📣',
+    Video: '🎬', Translation: '🌐', Data: '📊',
+  }
+  return icons[cat] || '💼'
+}
+
+// ─── Client Project card ──────────────────────────────────────────────────────
+
+function ClientProjectCard({ project, onPress, isArabic, tr }: {
+  project: any; onPress: () => void; isArabic: boolean; tr: any
+}) {
+  const sc  = statusColor[project.status] || colors.info
+  const dir = isArabic ? 'right' as const : 'left' as const
+  return (
+    <TouchableOpacity style={styles.clientCard} onPress={onPress} activeOpacity={0.8}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <Text style={[styles.clientCardTitle, { textAlign: dir, flex: 1, marginRight: 8 }]} numberOfLines={1}>
+          {project.title}
+        </Text>
+        <View style={[styles.statusPill, { backgroundColor: sc + '22', borderColor: sc + '55' }]}>
+          <Text style={[styles.statusPillText, { color: sc }]}>{project.status}</Text>
+        </View>
+      </View>
+      <Text style={[styles.clientCardDesc, { textAlign: dir }]} numberOfLines={2}>{project.description}</Text>
+      <View style={styles.clientCardMeta}>
         <Text style={styles.metaText}>💰 ${project.budget}</Text>
         <Text style={styles.metaText}>📋 {project.proposals?.length ?? 0} {tr.bids}</Text>
-        <Text style={styles.metaText}>⏰ {daysLeft(project.deadline)}</Text>
+        <Text style={styles.metaText}>⏰ {daysLeft(project.deadline, isArabic)}</Text>
       </View>
-      {project.clientId?.username && (
-        <Text style={[styles.postedBy, { textAlign: dir }]}>{tr.postedBy} {project.clientId.username}</Text>
-      )}
-      <TouchableOpacity style={styles.bidBtn} onPress={(e) => { e.stopPropagation?.(); onBid(project) }}>
-        <Text style={styles.bidBtnText}>💼 {tr.placeBid}</Text>
-      </TouchableOpacity>
     </TouchableOpacity>
   )
 }
 
 // ─── Bid Modal ────────────────────────────────────────────────────────────────
 
-function BidModal({ project, visible, onClose, onSubmit }: {
-  project: any; visible: boolean; onClose: () => void; onSubmit: (data: any) => Promise<void>
+function BidModal({ project, visible, onClose, onSubmit, isArabic, tr }: {
+  project: any; visible: boolean; onClose: () => void
+  onSubmit: (data: any) => Promise<void>; isArabic: boolean; tr: any
 }) {
-  const { tr, isArabic } = useLang()
   const [coverLetter, setCoverLetter] = useState('')
   const [bid, setBid]                 = useState('')
   const [deliveryTime, setDeliveryTime] = useState('')
-  const [loading, setLoading]         = useState(false)
+  const [loading, setLoading]           = useState(false)
   const dir = isArabic ? 'right' as const : 'left' as const
 
   const handleSubmit = async () => {
     if (!coverLetter.trim() || !bid || !deliveryTime) {
-      Alert.alert(tr.cancel, 'Please fill all fields.')
+      Alert.alert(
+        isArabic ? 'بيانات ناقصة' : 'Missing Info',
+        isArabic ? 'يرجى ملء جميع الحقول.' : 'Please fill all fields.'
+      )
       return
     }
     setLoading(true)
@@ -131,27 +235,48 @@ function BidModal({ project, visible, onClose, onSubmit }: {
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={styles.modalBox}>
-          <Text style={[styles.modalTitle, { textAlign: dir }]}>{tr.submitBid}</Text>
-          {project && <Text style={[styles.modalSubtitle, { textAlign: dir }]} numberOfLines={2}>{project.title}</Text>}
+          <Text style={[styles.modalTitle, { textAlign: dir }]}>
+            💼 {isArabic ? 'قدم عرضك' : 'Submit Your Bid'}
+          </Text>
+          {project && (
+            <Text style={[styles.modalSubtitle, { textAlign: dir }]} numberOfLines={2}>
+              {project.title}
+            </Text>
+          )}
 
           <Text style={[styles.inputLabel, { textAlign: dir }]}>{tr.coverLetter}</Text>
-          <TextInput style={[styles.input, styles.textarea]} placeholder="..." placeholderTextColor={colors.textDim}
-            value={coverLetter} onChangeText={setCoverLetter} multiline textAlign={dir} />
+          <TextInput
+            style={[styles.input, styles.textarea]}
+            placeholder={isArabic ? 'اشرح لماذا أنت الأنسب...' : "Why are you the best fit?"}
+            placeholderTextColor={colors.textDim}
+            value={coverLetter} onChangeText={setCoverLetter}
+            multiline textAlign={dir}
+          />
 
-          <Text style={[styles.inputLabel, { textAlign: dir }]}>{tr.bidAmount}</Text>
-          <TextInput style={styles.input} placeholder="e.g. 250" placeholderTextColor={colors.textDim}
-            value={bid} onChangeText={setBid} keyboardType="numeric" textAlign={dir} />
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.inputLabel, { textAlign: dir }]}>{tr.bidAmount}</Text>
+              <TextInput style={styles.input}
+                placeholder="$250" placeholderTextColor={colors.textDim}
+                value={bid} onChangeText={setBid} keyboardType="numeric" textAlign={dir} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.inputLabel, { textAlign: dir }]}>{tr.deliveryTime}</Text>
+              <TextInput style={styles.input}
+                placeholder={isArabic ? '7 أيام' : '7 days'} placeholderTextColor={colors.textDim}
+                value={deliveryTime} onChangeText={setDeliveryTime} keyboardType="numeric" textAlign={dir} />
+            </View>
+          </View>
 
-          <Text style={[styles.inputLabel, { textAlign: dir }]}>{tr.deliveryTime}</Text>
-          <TextInput style={styles.input} placeholder="e.g. 7" placeholderTextColor={colors.textDim}
-            value={deliveryTime} onChangeText={setDeliveryTime} keyboardType="numeric" textAlign={dir} />
-
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
             <TouchableOpacity style={[styles.btn, { flex: 1, backgroundColor: colors.cardDark }]} onPress={onClose}>
-              <Text style={styles.btnText}>{tr.cancel}</Text>
+              <Text style={[styles.btnText, { color: colors.textMuted }]}>{tr.cancel}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, { flex: 1 }]} onPress={handleSubmit} disabled={loading}>
-              {loading ? <ActivityIndicator color="white" /> : <Text style={styles.btnText}>{tr.submitBid}</Text>}
+            <TouchableOpacity style={[styles.btn, { flex: 2 }]} onPress={handleSubmit} disabled={loading}>
+              {loading
+                ? <ActivityIndicator color="white" size="small" />
+                : <Text style={styles.btnText}>{isArabic ? 'إرسال العرض' : 'Submit Bid'}</Text>
+              }
             </TouchableOpacity>
           </View>
         </View>
@@ -159,10 +284,6 @@ function BidModal({ project, visible, onClose, onSubmit }: {
     </Modal>
   )
 }
-
-// ─── Categories ───────────────────────────────────────────────────────────────
-
-const CATEGORIES = ['All', 'Design', 'Development', 'Writing', 'Marketing', 'Video', 'Translation', 'Data']
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -174,14 +295,22 @@ export default function HomeScreen() {
   const isClient    = user?.role === 'client'
   const dir         = isArabic ? 'right' as const : 'left' as const
 
-  const [projects, setProjects]     = useState<any[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [search, setSearch]         = useState('')
-  const [category, setCategory]     = useState('All')
-  const [bidTarget, setBidTarget]   = useState<any>(null)
+  const [projects,    setProjects]    = useState<any[]>([])
+  const [myProposals, setMyProposals] = useState<any[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [refreshing,  setRefreshing]  = useState(false)
+  const [search,      setSearch]      = useState('')
+  const [category,    setCategory]    = useState('All')
+  const [bidTarget,   setBidTarget]   = useState<any>(null)
+  const [showAllBrowse, setShowAllBrowse] = useState(false)
 
-  const fetchProjects = useCallback(async () => {
+  // Animated greeting banner
+  const fadeAnim = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start()
+  }, [])
+
+  const fetchAll = useCallback(async () => {
     try {
       if (isClient) {
         const { data } = await getMyProjectsAPI()
@@ -190,40 +319,74 @@ export default function HomeScreen() {
         const params: any = {}
         if (search) params.search = search
         if (category !== 'All') params.category = category
-        const { data } = await getProjectsAPI(params)
-        setProjects(Array.isArray(data) ? data : [])
+        const [projRes, propRes] = await Promise.all([
+          getProjectsAPI(params),
+          getMyProposalsAPI(),
+        ])
+        setProjects(Array.isArray(projRes.data) ? projRes.data : [])
+        setMyProposals(Array.isArray(propRes.data) ? propRes.data : [])
       }
     } catch {}
     setLoading(false)
+    setRefreshing(false)
   }, [isClient, search, category])
 
-  useEffect(() => { fetchProjects() }, [fetchProjects])
-
-  // NOTE: Do NOT clear notification badges here — user must visit NotificationsScreen to clear them
+  useEffect(() => { fetchAll() }, [fetchAll])
 
   useEffect(() => {
     if (!socket) return
-    const handler = () => { fetchProjects() }
+    const handler = () => fetchAll()
     socket.on('proposalReceived', handler)
     socket.on('proposalAccepted', handler)
-    return () => { socket.off('proposalReceived', handler); socket.off('proposalAccepted', handler) }
-  }, [socket, fetchProjects])
+    socket.on('newProject', handler)
+    return () => {
+      socket.off('proposalReceived', handler)
+      socket.off('proposalAccepted', handler)
+      socket.off('newProject', handler)
+    }
+  }, [socket, fetchAll])
 
-  const onRefresh = async () => { setRefreshing(true); await fetchProjects(); setRefreshing(false) }
+  const onRefresh = async () => { setRefreshing(true); await fetchAll() }
 
   const handleBidSubmit = async (formData: any) => {
     if (!bidTarget) return
     try {
       await submitProposalAPI({ projectId: bidTarget._id, ...formData })
-      Alert.alert('✅', tr.submitBid)
+      Alert.alert('✅', isArabic ? 'تم إرسال عرضك بنجاح!' : 'Bid submitted successfully!')
       setBidTarget(null)
-      fetchProjects()
+      fetchAll()
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.error || 'Failed')
+      Alert.alert(isArabic ? 'خطأ' : 'Error', e?.response?.data?.error || 'Failed')
     }
   }
 
-  const stats = {
+  // ── Freelancer: compute recommended (skill-matched) vs browse ────────────
+  const userSkills: string[] = (user?.skills || []).map((s: string) => s.toLowerCase())
+
+  const getMatchScore = (project: any) => {
+    if (userSkills.length === 0) return 0
+    const projSkills = (project.skills || []).map((s: string) => s.toLowerCase())
+    const matches = projSkills.filter((s: string) => userSkills.includes(s))
+    return Math.round((matches.length / Math.max(projSkills.length, 1)) * 100)
+  }
+
+  const recommendedProjects = projects
+    .map(p => ({ ...p, _matchScore: getMatchScore(p) }))
+    .filter(p => p._matchScore > 0)
+    .sort((a, b) => b._matchScore - a._matchScore)
+    .slice(0, 4)
+
+  const recommendedIds = new Set(recommendedProjects.map(p => p._id))
+  const browseProjects = projects.filter(p => !recommendedIds.has(p._id))
+
+  // ── Freelancer stats ─────────────────────────────────────────────────────
+  const activeBids   = myProposals.filter(p => p.status === 'pending').length
+  const wonBids      = myProposals.filter(p => p.status === 'accepted').length
+  const totalEarned  = user?.totalEarned ?? 0
+  const rating       = user?.rating ?? 0
+
+  // ── Client stats ─────────────────────────────────────────────────────────
+  const clientStats = {
     total:     projects.length,
     active:    projects.filter(p => p.status === 'in-progress').length,
     open:      projects.filter(p => p.status === 'open').length,
@@ -235,20 +398,20 @@ export default function HomeScreen() {
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.greeting, { textAlign: dir }]}>
-            {isClient ? tr.myDashboard : tr.findWork}
+        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+          <Text style={[styles.greetingText, { textAlign: dir }]}>
+            {greeting(isArabic)} 👋
           </Text>
           <Text style={[styles.username, { textAlign: dir }]}>
-            {user?.username}
+            {user?.username} {isClient
+              ? (isArabic ? '(عميل)' : '(Client)')
+              : (isArabic ? '(مستقل)' : '(Freelancer)')
+            }
           </Text>
-        </View>
+        </Animated.View>
 
         <View style={styles.headerRight}>
-          {/* AR / EN toggle */}
           <LangToggle />
-
-          {/* Bell */}
           <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('NotificationsScreen')}>
             <Text style={{ fontSize: 20 }}>🔔</Text>
             {unreadNotifications > 0 && (
@@ -257,10 +420,8 @@ export default function HomeScreen() {
               </View>
             )}
           </TouchableOpacity>
-
-          {/* Avatar */}
           <View style={styles.avatarCircle}>
-            <Text style={{ color: 'white', fontWeight: '700', fontSize: font.lg }}>
+            <Text style={{ color: 'white', fontWeight: '800', fontSize: font.base }}>
               {user?.username?.[0]?.toUpperCase()}
             </Text>
           </View>
@@ -271,146 +432,295 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        {/* ── Stats row ──────────────────────────────────────────────────── */}
-        {isClient ? (
-          <View style={styles.statsRow}>
-            {[
-              { label: tr.total,  value: stats.total,     color: colors.info },
-              { label: tr.open,   value: stats.open,      color: colors.primary },
-              { label: tr.active, value: stats.active,    color: colors.warning },
-              { label: tr.done,   value: stats.completed, color: colors.success },
-            ].map(s => (
-              <View key={s.label} style={styles.statCard}>
-                <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
-                <Text style={[styles.statLabel, { textAlign: 'center' }]}>{s.label}</Text>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.statsRow}>
-            {[
-              { label: tr.earned,   value: `$${user?.totalEarned ?? 0}`, color: colors.success },
-              { label: tr.rating,   value: `★ ${(user?.rating ?? 0).toFixed(1)}`, color: colors.warning },
-              { label: tr.projects, value: user?.totalProjects ?? 0, color: colors.info },
-            ].map(s => (
-              <View key={s.label} style={[styles.statCard, { flex: 1 }]}>
-                <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
-                <Text style={[styles.statLabel, { textAlign: 'center' }]}>{s.label}</Text>
-              </View>
-            ))}
-          </View>
-        )}
 
-        {/* ── Find Freelancers (client only) ────────────────────────────── */}
-        {isClient && (
-          <TouchableOpacity
-            style={styles.findFreelancerBanner}
-            onPress={() => navigation.navigate('FreelancerSearchScreen')}
-            activeOpacity={0.85}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.findFreelancerTitle, { textAlign: dir }]}>
-                {isArabic ? '🔍 ابحث عن مستقلين' : '🔍 Find Freelancers'}
-              </Text>
-              <Text style={[styles.findFreelancerSub, { textAlign: dir }]}>
-                {isArabic ? 'تصفح أفضل المستقلين وتواصل معهم مباشرة' : 'Browse top talent and start a conversation'}
-              </Text>
-            </View>
-            <Text style={{ fontSize: 28 }}>›</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* ── Search bar (freelancer only) ───────────────────────────────── */}
+        {/* ══════════════════════════════════════════════════════════════════
+            FREELANCER VIEW
+        ══════════════════════════════════════════════════════════════════ */}
         {!isClient && (
-          <View style={styles.searchSection}>
-            {/* Search row with filter icon */}
-            <View style={[styles.searchBox, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
-              <Text style={{ color: colors.textMuted, marginHorizontal: 8 }}>🔍</Text>
-              <TextInput
-                style={[styles.searchInput, { textAlign: dir }]}
-                placeholder={tr.searchPlaceholder}
-                placeholderTextColor={colors.textDim}
-                value={search}
-                onChangeText={setSearch}
-                returnKeyType="search"
-                onSubmitEditing={fetchProjects}
-              />
-              {search.length > 0 && (
-                <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 6 }}>
-                  <Text style={{ color: colors.textMuted }}>✕</Text>
-                </TouchableOpacity>
-              )}
-              <View style={styles.filterDivider} />
-              <TouchableOpacity style={styles.filterBtn}>
-                <Text style={{ fontSize: 18 }}>⚙️</Text>
-              </TouchableOpacity>
+          <>
+            {/* ── Freelancer Stats ── */}
+            <View style={styles.flStatsGrid}>
+              <View style={[styles.flStatCard, { flex: 2, borderColor: colors.primary + '44' }]}>
+                <Text style={[styles.flStatBig, { color: colors.success }]}>
+                  ${totalEarned.toLocaleString()}
+                </Text>
+                <Text style={styles.flStatLabel}>
+                  {isArabic ? 'إجمالي الأرباح' : 'Total Earned'}
+                </Text>
+              </View>
+              <View style={styles.flStatCard}>
+                <Text style={[styles.flStatBig, { color: colors.warning }]}>
+                  ★ {rating.toFixed(1)}
+                </Text>
+                <Text style={styles.flStatLabel}>{isArabic ? 'التقييم' : 'Rating'}</Text>
+              </View>
+              <View style={styles.flStatCard}>
+                <Text style={[styles.flStatBig, { color: colors.info }]}>{activeBids}</Text>
+                <Text style={styles.flStatLabel}>{isArabic ? 'عروض نشطة' : 'Active Bids'}</Text>
+              </View>
+              <View style={styles.flStatCard}>
+                <Text style={[styles.flStatBig, { color: colors.primary }]}>{wonBids}</Text>
+                <Text style={styles.flStatLabel}>{isArabic ? 'مشاريع رابحة' : 'Won'}</Text>
+              </View>
             </View>
 
-            {/* Filters label */}
-            <Text style={[styles.filtersLabel, { textAlign: dir }]}>{tr.filters}</Text>
-
-            {/* Category chips */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.catScroll}
-              contentContainerStyle={{ gap: 8, paddingRight: spacing.md }}
-            >
-              {CATEGORIES.map(cat => {
-                const label = cat === 'All' ? tr.allCategories : cat
-                return (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.catChip, category === cat && styles.catChipActive]}
-                    onPress={() => setCategory(cat)}
-                  >
-                    <Text style={[styles.catChipText, category === cat && { color: 'white' }]}>{label}</Text>
+            {/* ── Search & Filters ── */}
+            <View style={styles.searchSection}>
+              <View style={[styles.searchBox, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
+                <Text style={{ color: colors.textMuted, marginHorizontal: 10, fontSize: 16 }}>🔍</Text>
+                <TextInput
+                  style={[styles.searchInput, { textAlign: dir }]}
+                  placeholder={tr.searchPlaceholder}
+                  placeholderTextColor={colors.textDim}
+                  value={search}
+                  onChangeText={setSearch}
+                  returnKeyType="search"
+                  onSubmitEditing={fetchAll}
+                />
+                {search.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 8 }}>
+                    <Text style={{ color: colors.textMuted }}>✕</Text>
                   </TouchableOpacity>
-                )
-              })}
-            </ScrollView>
-          </View>
+                )}
+              </View>
+
+              {/* Category chips */}
+              <ScrollView
+                horizontal showsHorizontalScrollIndicator={false}
+                style={{ marginTop: 10 }}
+                contentContainerStyle={{ gap: 8, paddingRight: spacing.md }}
+              >
+                {CATEGORIES.map(cat => {
+                  const label = cat === 'All' ? tr.allCategories : cat
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[styles.catChip, category === cat && styles.catChipActive]}
+                      onPress={() => setCategory(cat)}
+                    >
+                      <Text style={[styles.catChipText, category === cat && { color: 'white' }]}>
+                        {cat !== 'All' && categoryIcon(cat) + ' '}{label}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </ScrollView>
+            </View>
+
+            {loading ? (
+              <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} size="large" />
+            ) : projects.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyIcon}>🔍</Text>
+                <Text style={[styles.emptyText, { textAlign: 'center' }]}>
+                  {isArabic ? 'لا توجد مشاريع تطابق بحثك' : 'No projects match your search'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                {/* ── 🔥 Recommended for You ── */}
+                {recommendedProjects.length > 0 && (
+                  <View style={styles.section}>
+                    <View style={[styles.sectionHeader, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
+                      <Text style={styles.sectionTitle}>
+                        🔥 {isArabic ? 'موصى لك' : 'Recommended for You'}
+                      </Text>
+                      <Text style={styles.sectionSub}>
+                        {isArabic ? 'مطابق لمهاراتك' : 'Matched to your skills'}
+                      </Text>
+                    </View>
+
+                    {recommendedProjects.map(p => (
+                      <RecommendedCard
+                        key={p._id}
+                        project={p}
+                        isArabic={isArabic}
+                        matchScore={p._matchScore}
+                        onBid={setBidTarget}
+                        onPress={() => navigation.navigate('ProjectDetailScreen', { projectId: p._id })}
+                      />
+                    ))}
+                  </View>
+                )}
+
+                {/* ── 📋 Browse All Projects ── */}
+                {browseProjects.length > 0 && (
+                  <View style={[styles.section, { marginTop: recommendedProjects.length > 0 ? 0 : 4 }]}>
+                    <View style={[styles.sectionHeader, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
+                      <Text style={styles.sectionTitle}>
+                        📋 {isArabic ? 'تصفح المشاريع' : 'Browse All Projects'}
+                      </Text>
+                      <Text style={styles.sectionCount}>
+                        {browseProjects.length} {isArabic ? 'مشروع' : 'projects'}
+                      </Text>
+                    </View>
+
+                    {(showAllBrowse ? browseProjects : browseProjects.slice(0, 6)).map(p => (
+                      <BrowseCard
+                        key={p._id}
+                        project={p}
+                        isArabic={isArabic}
+                        onBid={setBidTarget}
+                        onPress={() => navigation.navigate('ProjectDetailScreen', { projectId: p._id })}
+                      />
+                    ))}
+
+                    {browseProjects.length > 6 && (
+                      <TouchableOpacity
+                        style={styles.showMoreBtn}
+                        onPress={() => setShowAllBrowse(!showAllBrowse)}
+                      >
+                        <Text style={styles.showMoreText}>
+                          {showAllBrowse
+                            ? (isArabic ? '▲ عرض أقل' : '▲ Show Less')
+                            : (isArabic ? `▼ عرض كل ${browseProjects.length} مشروع` : `▼ Show all ${browseProjects.length} projects`)}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {/* If no skill-based recommendations, show all as Browse */}
+                {recommendedProjects.length === 0 && browseProjects.length === 0 && projects.length > 0 && (
+                  <View style={styles.section}>
+                    <View style={[styles.sectionHeader, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
+                      <Text style={styles.sectionTitle}>
+                        📋 {isArabic ? 'جميع المشاريع' : 'All Projects'}
+                      </Text>
+                      <Text style={styles.sectionCount}>{projects.length}</Text>
+                    </View>
+                    {projects.map(p => (
+                      <BrowseCard
+                        key={p._id}
+                        project={p}
+                        isArabic={isArabic}
+                        onBid={setBidTarget}
+                        onPress={() => navigation.navigate('ProjectDetailScreen', { projectId: p._id })}
+                      />
+                    ))}
+                  </View>
+                )}
+
+                {/* Add skills prompt if no recommendations and user has no skills */}
+                {recommendedProjects.length === 0 && userSkills.length === 0 && (
+                  <TouchableOpacity
+                    style={styles.addSkillsBanner}
+                    onPress={() => navigation.navigate('Profile')}
+                  >
+                    <Text style={styles.addSkillsIcon}>🎯</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.addSkillsTitle, { textAlign: dir }]}>
+                        {isArabic ? 'أضف مهاراتك' : 'Add Your Skills'}
+                      </Text>
+                      <Text style={[styles.addSkillsSub, { textAlign: dir }]}>
+                        {isArabic
+                          ? 'لنوصي لك بمشاريع تناسب خبرتك'
+                          : 'Get personalized project recommendations'}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.primary, fontSize: 20 }}>›</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+          </>
         )}
 
-        {/* ── Section title ──────────────────────────────────────────────── */}
-        <Text style={[styles.sectionTitle, { textAlign: dir }]}>
-          {isClient
-            ? `${tr.myProjects} (${projects.length})`
-            : `${tr.browseProjects} (${projects.length})`
-          }
-        </Text>
+        {/* ══════════════════════════════════════════════════════════════════
+            CLIENT VIEW
+        ══════════════════════════════════════════════════════════════════ */}
+        {isClient && (
+          <>
+            {/* ── Client Stats ── */}
+            <View style={styles.statsRow}>
+              {[
+                { label: tr.total,  value: clientStats.total,     color: colors.info },
+                { label: tr.open,   value: clientStats.open,      color: colors.primary },
+                { label: tr.active, value: clientStats.active,    color: colors.warning },
+                { label: tr.done,   value: clientStats.completed, color: colors.success },
+              ].map(s => (
+                <View key={s.label} style={styles.statCard}>
+                  <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
+                  <Text style={[styles.statLabel, { textAlign: 'center' }]}>{s.label}</Text>
+                </View>
+              ))}
+            </View>
 
-        {/* ── Project list ───────────────────────────────────────────────── */}
-        {loading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} size="large" />
-        ) : projects.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>{isClient ? '📂' : '🔍'}</Text>
-            <Text style={[styles.emptyText, { textAlign: 'center' }]}>
-              {isClient ? tr.noProjectsYet : tr.noProjectsFreelancer}
+            {/* ── Find Freelancers banner ── */}
+            <TouchableOpacity
+              style={styles.findFreelancerBanner}
+              onPress={() => navigation.navigate('FreelancerSearchScreen')}
+              activeOpacity={0.85}
+            >
+              <Text style={{ fontSize: 28 }}>🔍</Text>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={[styles.findFreelancerTitle, { textAlign: dir }]}>
+                  {isArabic ? 'ابحث عن مستقلين' : 'Find Freelancers'}
+                </Text>
+                <Text style={[styles.findFreelancerSub, { textAlign: dir }]}>
+                  {isArabic
+                    ? 'تصفح أفضل المستقلين وتواصل معهم مباشرة'
+                    : 'Browse top talent and start a conversation'}
+                </Text>
+              </View>
+              <Text style={{ color: colors.primary, fontSize: 22 }}>›</Text>
+            </TouchableOpacity>
+
+            {/* ── Post a project shortcut ── */}
+            <TouchableOpacity
+              style={styles.postBanner}
+              onPress={() => navigation.navigate('Post')}
+              activeOpacity={0.85}
+            >
+              <Text style={{ fontSize: 28 }}>✏️</Text>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={[styles.findFreelancerTitle, { textAlign: dir }]}>
+                  {isArabic ? 'انشر مشروعاً جديداً' : 'Post a New Project'}
+                </Text>
+                <Text style={[styles.findFreelancerSub, { textAlign: dir }]}>
+                  {isArabic ? 'استقطب أفضل المستقلين لمشروعك' : 'Attract top freelancers for your project'}
+                </Text>
+              </View>
+              <Text style={{ color: colors.success, fontSize: 22 }}>›</Text>
+            </TouchableOpacity>
+
+            {/* ── My Projects ── */}
+            <Text style={[styles.sectionTitle2, { textAlign: dir, marginHorizontal: spacing.md }]}>
+              {tr.myProjects} ({projects.length})
             </Text>
-            <Text style={[styles.emptySubText, { textAlign: 'center' }]}>
-              {isClient ? tr.noProjectsMsg : ''}
-            </Text>
-          </View>
-        ) : (
-          <View style={{ paddingHorizontal: spacing.md, paddingBottom: 100 }}>
-            {isClient
-              ? projects.map(p => (
-                  <ClientProjectCard key={p._id} project={p}
-                    onPress={() => navigation.navigate('ProjectDetailScreen', { projectId: p._id })} />
-                ))
-              : projects.map(p => (
-                  <FreelancerProjectCard key={p._id} project={p}
-                    onBid={setBidTarget}
-                    onPress={() => navigation.navigate('ProjectDetailScreen', { projectId: p._id })} />
-                ))
-            }
-          </View>
+
+            {loading ? (
+              <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} size="large" />
+            ) : projects.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyIcon}>📂</Text>
+                <Text style={[styles.emptyText, { textAlign: 'center' }]}>{tr.noProjectsYet}</Text>
+                <Text style={[styles.emptySubText, { textAlign: 'center' }]}>{tr.noProjectsMsg}</Text>
+              </View>
+            ) : (
+              <View style={{ paddingHorizontal: spacing.md, paddingBottom: 40 }}>
+                {projects.map(p => (
+                  <ClientProjectCard
+                    key={p._id} project={p} tr={tr} isArabic={isArabic}
+                    onPress={() => navigation.navigate('ProjectDetailScreen', { projectId: p._id })}
+                  />
+                ))}
+              </View>
+            )}
+          </>
         )}
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      <BidModal visible={!!bidTarget} project={bidTarget} onClose={() => setBidTarget(null)} onSubmit={handleBidSubmit} />
+      <BidModal
+        visible={!!bidTarget}
+        project={bidTarget}
+        onClose={() => setBidTarget(null)}
+        onSubmit={handleBidSubmit}
+        isArabic={isArabic}
+        tr={tr}
+      />
     </View>
   )
 }
@@ -418,11 +728,11 @@ export default function HomeScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container:    { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: colors.bg },
 
   // Header
-  header:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: 56, paddingBottom: spacing.md, backgroundColor: colors.cardDark, gap: spacing.sm },
-  greeting:     { color: colors.text, fontSize: font.xl, fontWeight: '800' },
+  header:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: 56, paddingBottom: spacing.md, backgroundColor: colors.cardDark, gap: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  greetingText: { color: colors.text, fontSize: font.lg, fontWeight: '800' },
   username:     { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
   headerRight:  { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   avatarCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
@@ -437,45 +747,89 @@ const styles = StyleSheet.create({
   bellBadge:    { position: 'absolute', top: -2, right: -2, backgroundColor: colors.error, borderRadius: radius.full, minWidth: 17, height: 17, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
   bellBadgeText:{ color: '#fff', fontSize: 9, fontWeight: '800' },
 
-  // Stats
+  // ── FREELANCER STATS ────────────────────────────────────────────────────────
+  flStatsGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: spacing.md },
+  flStatCard:   { flex: 1, minWidth: '22%', backgroundColor: colors.card, borderRadius: radius.lg, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  flStatBig:    { fontSize: font.lg, fontWeight: '900', marginBottom: 3 },
+  flStatLabel:  { color: colors.textDim, fontSize: 10, textAlign: 'center', lineHeight: 13 },
+
+  // Search
+  searchSection: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },
+  searchBox:     { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
+  searchInput:   { flex: 1, color: colors.text, fontSize: font.base, paddingVertical: 12 },
+
+  // Category chips
+  catChip:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  catChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  catChipText:   { color: colors.textMuted, fontSize: font.sm, fontWeight: '600' },
+
+  // Section headers
+  section:       { paddingHorizontal: spacing.md, marginBottom: 4 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 4 },
+  sectionTitle:  { color: colors.text, fontSize: font.lg, fontWeight: '800' },
+  sectionTitle2: { color: colors.text, fontSize: font.lg, fontWeight: '800', marginBottom: spacing.sm, marginTop: 4 },
+  sectionSub:    { color: colors.textDim, fontSize: font.sm },
+  sectionCount:  { color: colors.primary, fontSize: font.sm, fontWeight: '700' },
+
+  // ── RECOMMENDED CARDS ────────────────────────────────────────────────────────
+  recCard:      { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md, marginBottom: 10, borderWidth: 1, borderColor: colors.border, position: 'relative' },
+  matchBadge:   { position: 'absolute', top: 10, right: 10, backgroundColor: colors.success + '20', borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: colors.success + '40' },
+  matchBadgeText:{ color: colors.success, fontSize: 11, fontWeight: '700' },
+  recCatIcon:   { width: 44, height: 44, borderRadius: radius.lg, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primary + '30' },
+  recTitle:     { color: colors.text, fontWeight: '700', fontSize: font.base, lineHeight: 20 },
+  recMeta:      { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  catPill:      { backgroundColor: colors.info + '18', borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: colors.info + '30' },
+  catPillText:  { color: colors.info, fontSize: 11, fontWeight: '600' },
+  recBudget:    { color: colors.success, fontWeight: '700', fontSize: font.sm },
+  recDesc:      { color: colors.textMuted, fontSize: font.sm, lineHeight: 18, marginTop: 8, marginBottom: 8 },
+  skillsRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+  skillChip:    { backgroundColor: colors.primary + '18', paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.full, borderWidth: 1, borderColor: colors.primary + '30' },
+  skillText:    { color: colors.primary, fontSize: 11, fontWeight: '600' },
+  recFooter:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  recStats:     { flexDirection: 'row', gap: 10 },
+  recStat:      { color: colors.textDim, fontSize: 12 },
+  bidBtn:       { backgroundColor: colors.primary, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 8 },
+  bidBtnText:   { color: 'white', fontWeight: '700', fontSize: font.sm },
+
+  // ── BROWSE CARDS ─────────────────────────────────────────────────────────────
+  browseCard:    { backgroundColor: colors.card, borderRadius: radius.lg, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
+  browseCatIcon: { width: 38, height: 38, borderRadius: radius.md, backgroundColor: colors.cardDark, alignItems: 'center', justifyContent: 'center' },
+  browseTitle:   { color: colors.text, fontWeight: '700', fontSize: font.sm },
+  browseMeta:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  browseBudget:  { color: colors.success, fontWeight: '700', fontSize: font.sm },
+  browseStat:    { color: colors.textDim, fontSize: font.sm },
+  bidBtnSm:      { backgroundColor: colors.primary + '20', borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: colors.primary + '44' },
+  bidBtnSmText:  { color: colors.primary, fontWeight: '700', fontSize: font.sm },
+
+  showMoreBtn:  { backgroundColor: colors.card, borderRadius: radius.lg, padding: 12, alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: colors.border },
+  showMoreText: { color: colors.primary, fontWeight: '700', fontSize: font.sm },
+
+  // Add skills banner
+  addSkillsBanner: { flexDirection: 'row', alignItems: 'center', marginHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.warning + '12', borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.warning + '44', gap: 10 },
+  addSkillsIcon:   { fontSize: 28 },
+  addSkillsTitle:  { color: colors.text, fontWeight: '800', fontSize: font.base },
+  addSkillsSub:    { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
+
+  // ── CLIENT STATS ──────────────────────────────────────────────────────────────
   statsRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md },
   statCard: { flex: 1, backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   statValue:{ fontSize: font.lg, fontWeight: '800' },
   statLabel:{ color: colors.textMuted, fontSize: 10, marginTop: 2 },
 
-  // Search section
-  searchSection: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },
-  searchBox:     { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, marginBottom: 8 },
-  searchInput:   { flex: 1, color: colors.text, fontSize: font.base, paddingVertical: 12 },
-  filterDivider: { width: 1, height: 20, backgroundColor: colors.border, marginHorizontal: 4 },
-  filterBtn:     { paddingHorizontal: 10, paddingVertical: 8 },
-  filtersLabel:  { color: colors.textMuted, fontSize: font.sm, fontWeight: '700', marginBottom: 8 },
-
-  catScroll:     { marginBottom: 4 },
-  catChip:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
-  catChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  catChipText:   { color: colors.textMuted, fontSize: font.sm, fontWeight: '600' },
-
-  // Find Freelancers banner (client)
-  findFreelancerBanner: { flexDirection: 'row', alignItems: 'center', marginHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.primary + '18', borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.primary + '55', gap: 10 },
+  // Find Freelancers / Post banners (client)
+  findFreelancerBanner: { flexDirection: 'row', alignItems: 'center', marginHorizontal: spacing.md, marginBottom: 10, backgroundColor: colors.primary + '14', borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.primary + '44' },
   findFreelancerTitle:  { color: colors.primary, fontWeight: '800', fontSize: font.base },
   findFreelancerSub:    { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
+  postBanner:           { flexDirection: 'row', alignItems: 'center', marginHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.success + '12', borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.success + '33' },
 
-  // Section title
-  sectionTitle: { color: colors.text, fontSize: font.lg, fontWeight: '700', paddingHorizontal: spacing.md, marginBottom: spacing.sm },
-
-  // Cards
-  projectCard:  { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  projectTitle: { color: colors.text, fontSize: font.base, fontWeight: '700', flex: 1, marginRight: 8 },
-  projectDesc:  { color: colors.textMuted, fontSize: font.sm, lineHeight: 18, marginBottom: 10 },
-  projectMeta:  { flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap' },
-  metaText:     { color: colors.textDim, fontSize: font.sm },
-  postedBy:     { color: colors.textDim, fontSize: font.sm, marginTop: 6 },
-  tapHint:      { color: colors.primary, fontSize: 11, marginTop: 6 },
-  badge:        { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.full, borderWidth: 1 },
-  badgeText:    { fontSize: font.sm, fontWeight: '600' },
-  bidBtn:       { marginTop: 12, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 10, alignItems: 'center' },
-  bidBtnText:   { color: 'white', fontWeight: '700', fontSize: font.base },
+  // Client project cards
+  clientCard:      { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
+  clientCardTitle: { color: colors.text, fontSize: font.base, fontWeight: '700' },
+  clientCardDesc:  { color: colors.textMuted, fontSize: font.sm, lineHeight: 18, marginBottom: 10 },
+  clientCardMeta:  { flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap' },
+  statusPill:      { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.full, borderWidth: 1 },
+  statusPillText:  { fontSize: 11, fontWeight: '700' },
+  metaText:        { color: colors.textDim, fontSize: font.sm },
 
   // Empty
   emptyState:   { alignItems: 'center', paddingTop: 60, paddingHorizontal: spacing.xl },
@@ -484,8 +838,8 @@ const styles = StyleSheet.create({
   emptySubText: { color: colors.textMuted, fontSize: font.base, lineHeight: 22 },
 
   // Modal
-  modalOverlay:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalBox:      { backgroundColor: colors.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg, paddingBottom: 40 },
+  modalOverlay:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
+  modalBox:      { backgroundColor: colors.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg, paddingBottom: 44 },
   modalTitle:    { color: colors.text, fontSize: font.xl, fontWeight: '800', marginBottom: 4 },
   modalSubtitle: { color: colors.textMuted, fontSize: font.sm, marginBottom: spacing.md },
   inputLabel:    { color: colors.textMuted, fontSize: font.sm, fontWeight: '600', marginBottom: 6, marginTop: 10 },

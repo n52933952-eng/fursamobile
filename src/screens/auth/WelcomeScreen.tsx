@@ -1,20 +1,77 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar,
-  Animated, Image, SafeAreaView,
+  Animated, Image, SafeAreaView, Alert, ActivityIndicator,
 } from 'react-native'
 import { colors, spacing, radius, font } from '../../theme'
 import { useLang } from '../../context/LanguageContext'
+import { GoogleSignin } from '../config/firebase'
+import auth from '@react-native-firebase/auth'
+import { googleSignInAPI } from '../../api'
+import { useAuth } from '../../context/AuthContext'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 // ─── Screen ────────────────────────────────────────────────────────────────────
 
 export default function WelcomeScreen({ navigation }: any) {
   const { isArabic, lang, toggleLang } = useLang()
+  const { login } = useAuth()
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   // Entrance animations
   const fadeIn  = useRef(new Animated.Value(0)).current
   const slideUp = useRef(new Animated.Value(50)).current
   const illustrationScale = useRef(new Animated.Value(0.88)).current
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setGoogleLoading(true)
+      await GoogleSignin.hasPlayServices()
+      const result = await GoogleSignin.signIn()
+
+      if (result.type === 'cancelled' || !result.data) {
+        setGoogleLoading(false)
+        return
+      }
+
+      const idToken = result.data.idToken
+      if (!idToken) throw new Error('No idToken received')
+
+      const googleCredential = auth.GoogleAuthProvider.credential(idToken)
+      await auth().signInWithCredential(googleCredential)
+      const firebaseUser = auth().currentUser
+      if (!firebaseUser) throw new Error('Firebase user not found')
+
+      const payload = {
+        email:      firebaseUser.email,
+        name:       firebaseUser.displayName || result.data.user?.name,
+        googleId:   firebaseUser.uid,
+        profilePic: firebaseUser.photoURL || result.data.user?.photo || '',
+      }
+
+      // Try signing in without role — backend returns error if new user
+      try {
+        const { data } = await googleSignInAPI(payload)
+        await AsyncStorage.setItem('token', data.token)
+        login(data)
+      } catch (e: any) {
+        if (e?.response?.data?.error === 'role_required') {
+          // New user — ask for role
+          navigation.navigate('RoleSelect', { googlePayload: payload })
+        } else {
+          throw e
+        }
+      }
+    } catch (error: any) {
+      if (error.code !== 'SIGN_IN_CANCELLED') {
+        Alert.alert(
+          isArabic ? 'خطأ في تسجيل الدخول' : 'Sign-In Error',
+          error.message || 'Google Sign-In failed'
+        )
+      }
+    }
+    setGoogleLoading(false)
+  }
 
   useEffect(() => {
     Animated.parallel([
@@ -68,6 +125,32 @@ export default function WelcomeScreen({ navigation }: any) {
           </>
         )}
 
+        {/* Google Sign-In */}
+        <TouchableOpacity
+          style={styles.btnGoogle}
+          onPress={handleGoogleSignIn}
+          disabled={googleLoading}
+          activeOpacity={0.85}
+        >
+          {googleLoading ? (
+            <ActivityIndicator color="#333" size="small" />
+          ) : (
+            <>
+              <Text style={styles.googleIcon}>G</Text>
+              <Text style={styles.btnGoogleText}>
+                {isArabic ? 'متابعة مع Google' : 'Continue with Google'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Divider */}
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>{isArabic ? 'أو' : 'or'}</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
         <TouchableOpacity style={styles.btnPrimary} onPress={() => navigation.navigate('Register')}>
           <Text style={styles.btnPrimaryText}>
             {isArabic ? 'ابدأ الآن / Get Started' : 'Get Started / ابدأ الآن'}
@@ -103,6 +186,16 @@ const styles = StyleSheet.create({
 
   taglineMain: { color: colors.text, fontSize: font.xxl, fontWeight: '900', lineHeight: 34, marginBottom: 8, textAlign: 'center' },
   taglineSub:  { color: colors.textMuted, fontSize: font.sm, textAlign: 'center', lineHeight: 18, marginBottom: spacing.xl },
+
+  // Google button
+  btnGoogle:     { width: '100%', flexDirection: 'row', backgroundColor: '#fff', borderRadius: radius.md, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 12, borderWidth: 1.5, borderColor: '#E0E0E0', gap: 10 },
+  googleIcon:    { fontSize: 18, fontWeight: '900', color: '#4285F4' },
+  btnGoogleText: { color: '#333', fontWeight: '700', fontSize: font.base },
+
+  // Divider
+  dividerRow:  { flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 12, gap: 10 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: { color: colors.textDim, fontSize: font.sm },
 
   btnPrimary:     { width: '100%', backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 16, alignItems: 'center', marginBottom: spacing.sm },
   btnPrimaryText: { color: '#fff', fontWeight: '800', fontSize: font.base },

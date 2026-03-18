@@ -15,6 +15,7 @@ import LoginScreen          from '../screens/auth/LoginScreen'
 import RegisterScreen       from '../screens/auth/RegisterScreen'
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen'
 import OTPScreen            from '../screens/auth/OTPScreen'
+import RoleSelectScreen     from '../screens/auth/RoleSelectScreen'
 
 // Shared Screens
 import HomeScreen            from '../screens/shared/HomeScreen'
@@ -121,6 +122,7 @@ function AuthStack() {
       <Stack.Screen name="Register"       component={RegisterScreen} />
       <Stack.Screen name="OTP"            component={OTPScreen} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="RoleSelect"     component={RoleSelectScreen} />
     </Stack.Navigator>
   )
 }
