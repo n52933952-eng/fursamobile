@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useLang } from '../../context/LanguageContext'
 import { updateProfileAPI, aiExtractSkillsAPI } from '../../api'
 import { colors, spacing, radius, font } from '../../theme'
+import ProjectCategoryPicker from '../../components/ProjectCategoryPicker'
 
 const SKILLS_OPTIONS = [
   'React', 'React Native', 'Node.js', 'Python', 'UI/UX', 'Figma',
@@ -31,11 +32,15 @@ export default function ProfileScreen() {
   const [skills, setSkills]           = useState<string[]>(user?.skills || [])
   const [skillInput, setSkillInput]   = useState('')
   const [aiSkillLoading, setAiSkillLoading] = useState(false)
+  const [interestedCategories, setInterestedCategories] = useState<string[]>(
+    (user as any)?.interestedCategories || []
+  )
 
   useEffect(() => {
     setBio(user?.bio || '')
     setCountry((user as any)?.country || '')
     setSkills(user?.skills || [])
+    setInterestedCategories((user as any)?.interestedCategories || [])
   }, [user])
 
   const toggleSkill = (s: string) => {
@@ -79,7 +84,7 @@ export default function ProfileScreen() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const { data } = await updateProfileAPI({ bio, country, skills })
+      const { data } = await updateProfileAPI({ bio, country, skills, interestedCategories })
       updateUser(data)
       setEditing(false)
       Alert.alert('✅ Saved', 'Profile updated successfully.')
@@ -123,6 +128,10 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.username}>{user?.username}</Text>
           <Text style={styles.email}>{user?.email}</Text>
+          {/* Debug (remove later): helps verify which Mongo _id the app is using */}
+          <Text style={{ color: 'rgba(255,255,255,0.65)', marginTop: 6, fontSize: 12 }}>
+            _id: {user?._id}
+          </Text>
           <View style={[styles.roleBadge, { backgroundColor: rc + '22', borderColor: rc + '55' }]}>
             <Text style={[styles.roleText, { color: rc }]}>
               {user?.role === 'freelancer' ? '🛠 Freelancer' : '💼 Client'}
@@ -130,21 +139,44 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Stats */}
+        {/* Stats — freelancers can tap Rating to open evaluations screen */}
         <View style={styles.statsRow}>
-          {[
-            { label: 'Rating',    value: `★ ${(user?.rating ?? 0).toFixed(1)}`, color: colors.warning },
-            { label: 'Projects',  value: user?.totalProjects ?? 0,               color: colors.info },
-            { label: 'Earned',    value: `$${user?.totalEarned ?? 0}`,            color: colors.success },
-          ].map(s => (
-            <View key={s.label} style={styles.statCard}>
-              <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
+          {user?.role === 'freelancer' ? (
+            <TouchableOpacity
+              style={styles.statCard}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={isArabic ? 'عرض التقييمات والمراجعات' : 'View ratings and reviews'}
+              onPress={() => navigation.navigate('ReviewsScreen', {
+                freelancerId:   user?._id,
+                freelancerName: user?.username,
+              })}
+            >
+              <Text style={[styles.statValue, { color: colors.warning }]}>
+                ★ {(user?.rating ?? 0).toFixed(1)}
+              </Text>
+              <Text style={styles.statLabel}>Rating</Text>
+              <Text style={styles.statTapHint}>{isArabic ? 'اضغط ←' : 'View →'}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.statCard}>
+              <Text style={[styles.statValue, { color: colors.warning }]}>
+                ★ {(user?.rating ?? 0).toFixed(1)}
+              </Text>
+              <Text style={styles.statLabel}>Rating</Text>
             </View>
-          ))}
+          )}
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { color: colors.info }]}>{user?.totalProjects ?? 0}</Text>
+            <Text style={styles.statLabel}>Projects</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={[styles.statValue, { color: colors.success }]}>${user?.totalEarned ?? 0}</Text>
+            <Text style={styles.statLabel}>Earned</Text>
+          </View>
         </View>
 
-        {/* Reviews button (visible to freelancers & clients) */}
+        {/* Reviews / evaluations (freelancers: full breakdown; clients: if they ever have reviews) */}
         <TouchableOpacity
           style={styles.reviewsBtn}
           onPress={() => navigation.navigate('ReviewsScreen', {
@@ -153,7 +185,9 @@ export default function ProfileScreen() {
           })}
         >
           <Text style={styles.reviewsBtnText}>
-            ⭐ {isArabic ? 'التقييمات والمراجعات' : 'Ratings & Reviews'}
+            ⭐ {user?.role === 'freelancer'
+              ? (isArabic ? 'تقييماتي وتعليقات العملاء' : 'My ratings & client reviews')
+              : (isArabic ? 'التقييمات والمراجعات' : 'Ratings & Reviews')}
           </Text>
           <Text style={styles.reviewsBtnCount}>
             {(user as any)?.totalReviews ?? 0} {isArabic ? 'تقييم' : 'reviews'} →
@@ -191,6 +225,43 @@ export default function ProfileScreen() {
             />
           ) : (
             <Text style={styles.bioText}>{country || 'Not specified'}</Text>
+          )}
+        </View>
+
+        {/* Project categories (feed for freelancers; posting prefs for clients) */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            {isArabic ? 'فئات المشاريع' : 'Project categories'}
+          </Text>
+          <Text style={[styles.bioText, { marginBottom: spacing.sm }]}>
+            {user?.role === 'freelancer'
+              ? (isArabic
+                ? 'المشاريع المفتوحة في الرئيسية تقتصر على هذه الفئات. اترك الكل فارغاً من التعديل لعرض كل الفئات.'
+                : 'Open projects on Home are limited to these. Clear all chips and save to see every category.')
+              : (isArabic
+                ? 'نفس فئات نشر المشروع — يمكنك تعديل اهتماماتك هنا.'
+                : 'Same as when posting a project — adjust your focus areas here.')}
+          </Text>
+          {editing ? (
+            <ProjectCategoryPicker
+              selected={interestedCategories}
+              onChange={setInterestedCategories}
+              isArabic={isArabic}
+            />
+          ) : interestedCategories.length > 0 ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {interestedCategories.map((c) => (
+                <View key={c} style={styles.catPill}>
+                  <Text style={styles.catPillText}>{c}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.bioText}>
+              {user?.role === 'freelancer'
+                ? (isArabic ? 'جميع فئات المشاريع (لا يوجد تصفية)' : 'All project categories (no filter)')
+                : (isArabic ? 'لم تُحدد فئات بعد — عدّل الملف لإضافتها' : 'No categories yet — tap Edit to add')}
+            </Text>
           )}
         </View>
 
@@ -288,6 +359,7 @@ const styles = StyleSheet.create({
   statCard:   { flex: 1, backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   statValue:  { fontSize: font.lg, fontWeight: '800' },
   statLabel:  { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
+  statTapHint:{ color: colors.primary, fontSize: 10, fontWeight: '700', marginTop: 4 },
 
   reviewsBtn:      { marginHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   reviewsBtnText:  { color: colors.text, fontWeight: '700', fontSize: font.base },
@@ -309,6 +381,9 @@ const styles = StyleSheet.create({
   skillChip:    { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center' },
   skillChipActive:{ backgroundColor: colors.primary, borderColor: colors.primary },
   skillChipText:{ color: colors.textMuted, fontSize: font.sm, fontWeight: '600' },
+
+  catPill:     { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full, backgroundColor: colors.primary + '22', borderWidth: 1, borderColor: colors.primary + '44' },
+  catPillText: { color: colors.primary, fontSize: font.sm, fontWeight: '700' },
 
   logoutBtn:  { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.error + '44', borderRadius: radius.lg, paddingVertical: 14, alignItems: 'center' },
   logoutText: { color: colors.error, fontSize: font.base, fontWeight: '700' },

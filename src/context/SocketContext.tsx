@@ -85,8 +85,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     // ── Notification from any backend controller ──────────────────────────
     sock.on('newNotification', (notification: AppNotification) => {
       setNotifications(prev => {
-        // avoid duplicate if DB fetch already loaded it
-        if (prev.some(n => n._id === notification._id)) return prev
+        const nid = notification._id != null ? String(notification._id) : ''
+        if (nid && prev.some(n => String(n._id) === nid)) return prev
         return [{ ...notification, read: false }, ...prev]
       })
     })
@@ -96,18 +96,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       setUnreadMessages(prev => prev + 1)
     })
 
-    // ── Client: someone bid on their project ──────────────────────────────
-    sock.on('proposalReceived', (data: any) => {
-      setNotifications(prev => [{
-        _id: `pr_${Date.now()}`,
-        type: 'proposal',
-        title: '📋 New Bid Received',
-        body: `A freelancer submitted a bid on your project`,
-        read: false,
-        createdAt: new Date().toISOString(),
-        ...data,
-      }, ...prev])
-    })
+    // ── Client: bid received — real row comes from `newNotification` (REST). This is only a refetch signal for screens that listen on socket.
+    // Refetch signals for Home / detail screens (notification row is `newNotification` above)
+    sock.on('proposalReceived', () => {})
 
     // ── Freelancer: their bid was accepted ────────────────────────────────
     sock.on('proposalAccepted', (data: any) => {

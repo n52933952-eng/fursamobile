@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch,
   TextInput, RefreshControl, Modal, Alert, ActivityIndicator, Animated,
+  Keyboard,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
@@ -11,6 +12,7 @@ import {
   getMyProjectsAPI, getProjectsAPI, submitProposalAPI, getMyProposalsAPI,
 } from '../../api'
 import { colors, spacing, radius, font } from '../../theme'
+import { PROJECT_CATEGORIES } from '../../constants/projectCategories'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -61,7 +63,7 @@ function LangToggle() {
 
 // ─── Categories ───────────────────────────────────────────────────────────────
 
-const CATEGORIES = ['All', 'Design', 'Development', 'Writing', 'Marketing', 'Video', 'Translation', 'Data']
+const CATEGORIES = ['All', ...PROJECT_CATEGORIES] as string[]
 
 // ─── Freelancer Project Card (compact, for Recommended) ──────────────────────
 
@@ -173,7 +175,7 @@ function BrowseCard({ project, onBid, onPress, isArabic }: {
 function categoryIcon(cat: string) {
   const icons: Record<string, string> = {
     Design: '🎨', Development: '💻', Writing: '✍️', Marketing: '📣',
-    Video: '🎬', Translation: '🌐', Data: '📊',
+    Video: '🎬', Translation: '🌐', Data: '📊', Other: '📌',
   }
   return icons[cat] || '💼'
 }
@@ -299,8 +301,17 @@ export default function HomeScreen() {
   const [myProposals, setMyProposals] = useState<any[]>([])
   const [loading,     setLoading]     = useState(true)
   const [refreshing,  setRefreshing]  = useState(false)
-  const [search,      setSearch]      = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [category,    setCategory]    = useState('All')
+  const freelancerInterested = (user as any)?.interestedCategories || []
+  const freelancerChips = [
+    'All',
+    ...(Array.isArray(freelancerInterested) && freelancerInterested.length > 0
+      ? freelancerInterested
+      : CATEGORIES.filter(c => c !== 'All')
+    ),
+  ]
   const [bidTarget,   setBidTarget]   = useState<any>(null)
   const [showAllBrowse, setShowAllBrowse] = useState(false)
 
@@ -317,7 +328,7 @@ export default function HomeScreen() {
         setProjects(Array.isArray(data) ? data : [])
       } else {
         const params: any = {}
-        if (search) params.search = search
+        if (debouncedSearch) params.search = debouncedSearch
         if (category !== 'All') params.category = category
         const [projRes, propRes] = await Promise.all([
           getProjectsAPI(params),
@@ -329,7 +340,17 @@ export default function HomeScreen() {
     } catch {}
     setLoading(false)
     setRefreshing(false)
-  }, [isClient, search, category])
+  }, [isClient, debouncedSearch, category])
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(searchInput.trim()), 420)
+    return () => clearTimeout(id)
+  }, [searchInput])
+
+  const runSearchNow = useCallback(() => {
+    Keyboard.dismiss()
+    setDebouncedSearch(searchInput.trim())
+  }, [searchInput])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
@@ -339,10 +360,16 @@ export default function HomeScreen() {
     socket.on('proposalReceived', handler)
     socket.on('proposalAccepted', handler)
     socket.on('newProject', handler)
+    socket.on('openProjectsChanged', handler)
+    socket.on('clientProjectsChanged', handler)
+    socket.on('projectUpdated', handler)
     return () => {
       socket.off('proposalReceived', handler)
       socket.off('proposalAccepted', handler)
       socket.off('newProject', handler)
+      socket.off('openProjectsChanged', handler)
+      socket.off('clientProjectsChanged', handler)
+      socket.off('projectUpdated', handler)
     }
   }, [socket, fetchAll])
 
@@ -448,12 +475,24 @@ export default function HomeScreen() {
                   {isArabic ? 'إجمالي الأرباح' : 'Total Earned'}
                 </Text>
               </View>
-              <View style={styles.flStatCard}>
+              <TouchableOpacity
+                style={styles.flStatCard}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={isArabic ? 'عرض التقييمات والمراجعات' : 'View ratings and reviews'}
+                onPress={() => navigation.navigate('ReviewsScreen', {
+                  freelancerId:   user?._id,
+                  freelancerName: user?.username,
+                })}
+              >
                 <Text style={[styles.flStatBig, { color: colors.warning }]}>
                   ★ {rating.toFixed(1)}
                 </Text>
                 <Text style={styles.flStatLabel}>{isArabic ? 'التقييم' : 'Rating'}</Text>
-              </View>
+                <Text style={styles.flStatTapHint}>
+                  {isArabic ? 'اضغط للتفاصيل' : 'Tap for details'}
+                </Text>
+              </TouchableOpacity>
               <View style={styles.flStatCard}>
                 <Text style={[styles.flStatBig, { color: colors.info }]}>{activeBids}</Text>
                 <Text style={styles.flStatLabel}>{isArabic ? 'عروض نشطة' : 'Active Bids'}</Text>
@@ -472,13 +511,19 @@ export default function HomeScreen() {
                   style={[styles.searchInput, { textAlign: dir }]}
                   placeholder={tr.searchPlaceholder}
                   placeholderTextColor={colors.textDim}
-                  value={search}
-                  onChangeText={setSearch}
+                  value={searchInput}
+                  onChangeText={setSearchInput}
                   returnKeyType="search"
-                  onSubmitEditing={fetchAll}
+                  onSubmitEditing={runSearchNow}
                 />
-                {search.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 8 }}>
+                <TouchableOpacity onPress={runSearchNow} style={styles.searchGoBtn} accessibilityRole="button">
+                  <Text style={styles.searchGoBtnText}>🔍</Text>
+                </TouchableOpacity>
+                {searchInput.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => { setSearchInput(''); setDebouncedSearch('') }}
+                    style={{ padding: 8 }}
+                  >
                     <Text style={{ color: colors.textMuted }}>✕</Text>
                   </TouchableOpacity>
                 )}
@@ -490,7 +535,7 @@ export default function HomeScreen() {
                 style={{ marginTop: 10 }}
                 contentContainerStyle={{ gap: 8, paddingRight: spacing.md }}
               >
-                {CATEGORIES.map(cat => {
+                {freelancerChips.map(cat => {
                   const label = cat === 'All' ? tr.allCategories : cat
                   return (
                     <TouchableOpacity
@@ -752,11 +797,14 @@ const styles = StyleSheet.create({
   flStatCard:   { flex: 1, minWidth: '22%', backgroundColor: colors.card, borderRadius: radius.lg, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   flStatBig:    { fontSize: font.lg, fontWeight: '900', marginBottom: 3 },
   flStatLabel:  { color: colors.textDim, fontSize: 10, textAlign: 'center', lineHeight: 13 },
+  flStatTapHint:{ color: colors.primary, fontSize: 9, fontWeight: '700', textAlign: 'center', marginTop: 2, opacity: 0.9 },
 
   // Search
   searchSection: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },
   searchBox:     { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
   searchInput:   { flex: 1, color: colors.text, fontSize: font.base, paddingVertical: 12 },
+  searchGoBtn:   { paddingHorizontal: 10, paddingVertical: 8, justifyContent: 'center' },
+  searchGoBtnText:{ fontSize: 18 },
 
   // Category chips
   catChip:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },

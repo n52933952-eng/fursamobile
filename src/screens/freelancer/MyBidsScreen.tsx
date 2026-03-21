@@ -7,6 +7,7 @@ import { useNavigation } from '@react-navigation/native'
 import { getMyProposalsAPI } from '../../api'
 import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
+import { useAuth } from '../../context/AuthContext'
 import { colors, spacing, radius, font } from '../../theme'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -210,6 +211,7 @@ export default function MyBidsScreen() {
   const { isArabic, lang, toggleLang } = useLang()
   const navigation   = useNavigation<any>()
   const dir          = isArabic ? 'right' as const : 'left' as const
+  const { user }     = useAuth()
 
   const [proposals, setProposals]   = useState<any[]>([])
   const [loading, setLoading]       = useState(true)
@@ -231,14 +233,25 @@ export default function MyBidsScreen() {
 
   const fetchProposals = useCallback(async () => {
     try {
+      if (!user?._id) return
       const { data } = await getMyProposalsAPI()
       setProposals(Array.isArray(data) ? data : [])
     } catch {}
     setLoading(false)
     setRefreshing(false)
-  }, [])
+  }, [user?._id])
 
-  useEffect(() => { fetchProposals() }, [fetchProposals])
+  useEffect(() => {
+    // Reset to avoid showing stale data from a previous user session
+    if (!user?._id) {
+      setLoading(true)
+      setProposals([])
+      return
+    }
+    setLoading(true)
+    setProposals([])
+    fetchProposals()
+  }, [fetchProposals, user?._id])
 
   useEffect(() => {
     if (!socket) return

@@ -245,8 +245,12 @@ export default function ReviewsScreen() {
           <Text style={[styles.headerTitle, { textAlign: dir }]}>
             {isArabic ? 'التقييمات' : 'Ratings & Reviews'}
           </Text>
-          <Text style={styles.headerSub}>
-            {isArabic ? 'Ratings & Reviews' : 'التقييمات'}
+          <Text style={styles.headerSub} numberOfLines={1}>
+            {freelancerName && !isOwnProfile
+              ? freelancerName
+              : (isOwnProfile && user?.role === 'freelancer'
+                ? (isArabic ? 'تقييماتك من العملاء' : 'Your evaluations from clients')
+                : (isArabic ? 'Ratings & Reviews' : 'التقييمات'))}
           </Text>
         </View>
         <TouchableOpacity style={styles.langBtn} onPress={toggleLang}>
@@ -297,7 +301,11 @@ export default function ReviewsScreen() {
               {isArabic ? 'لا توجد تقييمات بعد' : 'No reviews yet'}
             </Text>
             <Text style={styles.emptyText}>
-              {isArabic ? 'كن أول من يُقيّم' : 'Be the first to leave a review'}
+              {isOwnProfile && user?.role === 'freelancer'
+                ? (isArabic
+                  ? 'ستظهر هنا تقييمات العملاء بعد إتمام المشاريع بنجاح.'
+                  : 'Client reviews will show here after you complete projects.')
+                : (isArabic ? 'كن أول من يُقيّم' : 'Be the first to leave a review')}
             </Text>
           </View>
         ) : (

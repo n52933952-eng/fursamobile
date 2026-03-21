@@ -1,6 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { DeviceEventEmitter } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { getAuth, signOut as firebaseSignOut } from '@react-native-firebase/auth'
+import { GoogleSignin } from '../config/firebase'
 import { setupPushNotifications } from '../config/fcm'
+import { SESSION_ORPHAN_USER_EVENT } from '../api/authSession'
+import { decodeJwtUserId } from '../utils/jwtPayload'
 
 interface User {
   _id: string
@@ -10,6 +15,8 @@ interface User {
   profilePic?: string
   bio?: string
   skills?: string[]
+  /** Categories you work in / post about — used to filter freelancer project feed. */
+  interestedCategories?: string[]
   rating?: number
   totalProjects?: number
   totalEarned?: number
@@ -40,35 +47,98 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem('user'),
           AsyncStorage.getItem('token'),
         ])
-        if (storedUser && storedToken) {
-          setUser(JSON.parse(storedUser))
+        if (
+          storedUser &&
+          storedToken &&
+          typeof storedToken === 'string' &&
+          storedToken.length >= 10
+        ) {
+          let parsed: User & { id?: string }
+          try {
+            parsed = JSON.parse(storedUser)
+          } catch {
+            await AsyncStorage.multiRemove(['user', 'token'])
+            setLoading(false)
+            return
+          }
+          const rawId = parsed._id ?? parsed.id
+          if (!rawId) {
+            await AsyncStorage.multiRemove(['user', 'token'])
+            setLoading(false)
+            return
+          }
+          const normalized: User = { ...parsed, _id: String(rawId) }
+          const jwtUid = decodeJwtUserId(storedToken)
+          if (jwtUid && jwtUid !== normalized._id) {
+            await AsyncStorage.multiRemove(['user', 'token'])
+            setLoading(false)
+            return
+          }
+          setUser(normalized)
           setToken(storedToken)
+          // Keep disk copy aligned (e.g. older builds saved `id` only)
+          await AsyncStorage.setItem('user', JSON.stringify(normalized))
         }
-      } catch {}
+      } catch {
+        try {
+          await AsyncStorage.multiRemove(['user', 'token'])
+        } catch {
+          /* ignore */
+        }
+      }
       setLoading(false)
     }
     restore()
   }, [])
 
   const login = async (userData: User, tkn: string) => {
+    if (!tkn || typeof tkn !== 'string' || tkn.length < 10) {
+      throw new Error('Server did not return a valid session token. Try again or use email login.')
+    }
+    const rawId = userData._id ?? (userData as User & { id?: string }).id
+    if (!rawId) {
+      throw new Error('Server user profile is missing an id. Check API / MongoDB.')
+    }
+    const normalized: User = { ...userData, _id: String(rawId) }
+    const jwtUid = decodeJwtUserId(tkn)
+    if (jwtUid && jwtUid !== normalized._id) {
+      throw new Error('Token does not match your profile. Please sign in with Google again.')
+    }
     await Promise.all([
-      AsyncStorage.setItem('user', JSON.stringify(userData)),
+      AsyncStorage.setItem('user', JSON.stringify(normalized)),
       AsyncStorage.setItem('token', tkn),
     ])
-    setUser(userData)
+    setUser(normalized)
     setToken(tkn)
-    // Register FCM token so the server can send push notifications to this device
-    setupPushNotifications().catch(() => {})
+    // Pass JWT explicitly — FCM save runs async after permission; avoids 401 without Bearer
+    setupPushNotifications(tkn).catch(() => {})
   }
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
+    try {
+      await GoogleSignin.signOut()
+    } catch {
+      /* not signed in with Google */
+    }
+    try {
+      await firebaseSignOut(getAuth())
+    } catch {
+      /* ignore */
+    }
     await Promise.all([
       AsyncStorage.removeItem('user'),
       AsyncStorage.removeItem('token'),
     ])
     setUser(null)
     setToken(null)
-  }
+  }, [])
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(SESSION_ORPHAN_USER_EVENT, () => {
+      logout()
+    })
+    return () => sub.remove()
+  }, [logout])
 
   const updateUser = (data: Partial<User>) => {
     if (!user) return

@@ -5,6 +5,7 @@ import {
 } from 'react-native'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
+import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
 import {
   getProjectAPI, getProposalsAPI, acceptProposalAPI, submitProposalAPI,
@@ -38,32 +39,76 @@ function timeAgo(iso: string, isArabic: boolean) {
   return d === 0 ? 'Today' : d === 1 ? 'Yesterday' : `${d} days ago`
 }
 
+/** Budget / meta: deadline may be ISO date or a number of days */
+function formatDeadline(deadline: unknown, isArabic: boolean) {
+  if (deadline == null || deadline === '') return isArabic ? 'مفتوح' : 'Open'
+  const raw = String(deadline).trim()
+  const asNum = Number(raw)
+  if (raw !== '' && !Number.isNaN(asNum) && /^\d+$/.test(raw)) {
+    return `${asNum} ${isArabic ? 'يوم' : 'days'}`
+  }
+  const dt = new Date(raw)
+  if (!Number.isNaN(dt.getTime())) {
+    return dt.toLocaleDateString(isArabic ? 'ar-SA' : 'en-US', {
+      year: 'numeric', month: 'short', day: 'numeric',
+    })
+  }
+  return raw
+}
+
 // ─── Proposal Card ───────────────────────────────────────────────────────────
 
 function ProposalCard({ proposal, onAccept, isClient, isArabic }: {
   proposal: any; onAccept: (id: string, bid: number) => void
   isClient: boolean; isArabic: boolean
 }) {
-  const fl  = proposal.freelancerId || {}
-  const dir = isArabic ? 'right' as const : 'left' as const
+  const navigation = useNavigation<any>()
+  const fl         = proposal.freelancerId || {}
+  const dir        = isArabic ? 'right' as const : 'left' as const
+  const freelancerId = typeof fl === 'object' && fl != null ? fl._id : null
+
+  const openFreelancerReviews = () => {
+    if (!freelancerId) return
+    navigation.navigate('ReviewsScreen', {
+      freelancerId:   String(freelancerId),
+      freelancerName: fl.username || '',
+    })
+  }
 
   return (
     <View style={styles.proposalCard}>
       <View style={styles.proposalHeader}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>{(fl.username || 'F')[0].toUpperCase()}</Text>
-        </View>
-        <View style={{ flex: 1, marginLeft: spacing.sm }}>
-          <Text style={styles.proposalName}>{fl.username || (isArabic ? 'مستقل' : 'Freelancer')}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Text style={styles.starText}>⭐</Text>
-            <Text style={styles.ratingText}>{fl.rating?.toFixed(1) || '0.0'}</Text>
-            <Text style={styles.dimText}>
-              {' · '}{fl.totalProjects || 0}{' '}{isArabic ? 'مشروع' : 'projects'}
-            </Text>
+        <TouchableOpacity
+          style={styles.proposalHeaderTap}
+          activeOpacity={isClient && freelancerId ? 0.75 : 1}
+          disabled={!isClient || !freelancerId}
+          onPress={openFreelancerReviews}
+          accessibilityRole={isClient && freelancerId ? 'button' : undefined}
+          accessibilityLabel={isArabic ? 'عرض تقييمات المستقل' : 'View freelancer ratings and reviews'}
+        >
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>{(fl.username || 'F')[0].toUpperCase()}</Text>
           </View>
-        </View>
-        <View>
+          <View style={{ flex: 1, marginLeft: spacing.sm, marginRight: spacing.xs }}>
+            <Text style={styles.proposalName}>{fl.username || (isArabic ? 'مستقل' : 'Freelancer')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+              <Text style={styles.starText}>⭐</Text>
+              <Text style={styles.ratingText}>{fl.rating?.toFixed(1) ?? '0.0'}</Text>
+              <Text style={styles.dimText}>
+                {' · '}{fl.totalReviews ?? 0}{' '}{isArabic ? 'تقييم' : 'reviews'}
+              </Text>
+              <Text style={styles.dimText}>
+                {' · '}{fl.totalProjects ?? 0}{' '}{isArabic ? 'مشروع' : 'projects'}
+              </Text>
+            </View>
+            {isClient && freelancerId ? (
+              <Text style={styles.tapForReviewsHint}>
+                {isArabic ? 'اضغط لعرض التقييمات ←' : 'Tap to view reviews →'}
+              </Text>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+        <View style={styles.proposalBidCol}>
           <Text style={styles.bidAmount}>${proposal.bid}</Text>
           <Text style={styles.deliveryText}>
             {proposal.deliveryTime} {isArabic ? 'يوم' : 'days'}
@@ -185,6 +230,7 @@ function BidModal({ projectId, visible, onClose, onSubmit, isArabic }: any) {
 
 export default function ProjectDetailScreen() {
   const { user }             = useAuth()
+  const { socket }           = useSocket()
   const { isArabic, toggleLang, lang } = useLang()
   const navigation           = useNavigation<any>()
   const route                = useRoute<any>()
@@ -213,9 +259,27 @@ export default function ProjectDetailScreen() {
       }
     } catch {}
     setLoading(false)
-  }, [projectId, isClient])
+  }, [projectId, isClient, user?._id])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!socket || !projectId) return
+    const onRealtime = (payload: { projectId?: string; project?: { _id?: string } }) => {
+      const pid = payload?.projectId ?? payload?.project?._id
+      if (pid != null && String(pid) === String(projectId)) load()
+    }
+    socket.on('projectProposalsUpdated', onRealtime)
+    socket.on('projectUpdated', onRealtime)
+    socket.on('clientProjectsChanged', onRealtime)
+    socket.on('openProjectsChanged', onRealtime)
+    return () => {
+      socket.off('projectProposalsUpdated', onRealtime)
+      socket.off('projectUpdated', onRealtime)
+      socket.off('clientProjectsChanged', onRealtime)
+      socket.off('openProjectsChanged', onRealtime)
+    }
+  }, [socket, projectId, load])
 
   const handleAccept = async (proposalId: string, bidAmount: number) => {
     Alert.alert(
@@ -338,9 +402,7 @@ export default function ProjectDetailScreen() {
             <View style={styles.metaBox}>
               <Text style={styles.metaLabel}>⏱ {isArabic ? 'الموعد' : 'Deadline'}</Text>
               <Text style={styles.metaValue}>
-                {project.deadline
-                  ? `${project.deadline} ${isArabic ? 'يوم' : 'days'}`
-                  : (isArabic ? 'مفتوح' : 'Open')}
+                {formatDeadline(project.deadline, isArabic)}
               </Text>
             </View>
           </View>
@@ -489,7 +551,10 @@ const styles = StyleSheet.create({
   sectionTitle: { color: colors.text, fontSize: font.lg, fontWeight: '800', marginBottom: spacing.md },
 
   proposalCard:   { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  proposalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
+  proposalHeader:    { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm },
+  proposalHeaderTap: { flexDirection: 'row', flex: 1, alignItems: 'center', minWidth: 0 },
+  proposalBidCol:    { alignItems: 'flex-end', justifyContent: 'flex-start', paddingLeft: spacing.xs },
+  tapForReviewsHint: { color: colors.primary, fontSize: 11, fontWeight: '600', marginTop: 4 },
   avatarCircle:   { width: 44, height: 44, borderRadius: radius.full, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarText:     { color: '#fff', fontSize: font.lg, fontWeight: '800' },
   proposalName:   { color: colors.text, fontWeight: '700', fontSize: font.base },

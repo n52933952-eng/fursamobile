@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView,
 } from 'react-native'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
@@ -8,6 +8,7 @@ import { useLang } from '../../context/LanguageContext'
 import { googleSignInAPI } from '../../api'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { colors, spacing, radius, font } from '../../theme'
+import ProjectCategoryPicker from '../../components/ProjectCategoryPicker'
 
 export default function RoleSelectScreen() {
   const navigation         = useNavigation<any>()
@@ -15,6 +16,7 @@ export default function RoleSelectScreen() {
   const { login }          = useAuth()
   const { isArabic }       = useLang()
   const [role, setRole]    = useState<'client' | 'freelancer' | null>(null)
+  const [interestedCategories, setInterestedCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
 
   // Passed from WelcomeScreen / LoginScreen after Google sign-in
@@ -22,15 +24,26 @@ export default function RoleSelectScreen() {
 
   const handleConfirm = async () => {
     if (!role) return
+    if (role === 'freelancer' && interestedCategories.length === 0) {
+      Alert.alert(
+        isArabic ? 'تنبيه' : 'Almost there',
+        isArabic ? 'اختر فئة واحدة على الأقل أدناه' : 'Pick at least one project category below'
+      )
+      return
+    }
     setLoading(true)
     try {
-      const { data } = await googleSignInAPI({ ...googlePayload, role })
-      await AsyncStorage.setItem('token', data.token)
-      login(data)
+      await AsyncStorage.multiRemove(['user', 'token'])
+      const { data } = await googleSignInAPI({ ...googlePayload, role, interestedCategories })
+      const { token, ...userData } = data
+      await login(userData, token)
     } catch (e: any) {
+      const err = e?.response?.data?.error
       Alert.alert(
         isArabic ? 'خطأ' : 'Error',
-        e?.response?.data?.error || 'Failed to complete sign-in'
+        err === 'categories_required'
+          ? (isArabic ? 'اختر فئة واحدة على الأقل' : 'Select at least one category')
+          : (err || 'Failed to complete sign-in')
       )
     }
     setLoading(false)
@@ -39,7 +52,7 @@ export default function RoleSelectScreen() {
   const dir = isArabic ? 'right' as const : 'left' as const
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.logo}>فُرصة</Text>
@@ -98,11 +111,36 @@ export default function RoleSelectScreen() {
         </TouchableOpacity>
       </View>
 
+      {role === 'freelancer' ? (
+        <View style={styles.catBlock}>
+          <Text style={[styles.catTitle, { textAlign: dir }]}>
+            {isArabic ? 'مجالات المشاريع' : 'Project categories'}
+          </Text>
+          <Text style={[styles.catHint, { textAlign: dir }]}>
+            {role === 'freelancer'
+              ? (isArabic
+                ? 'ستظهر لك في الرئيسية مشاريع هذه الفئات فقط.'
+                : 'Your home feed will list open jobs in these categories.')
+              : (isArabic
+                ? 'نفس الفئات عند نشر مشروع. يمكنك تغييرها لاحقاً من الملف الشخصي.'
+                : 'Same categories as when posting a project. Edit anytime in Profile.')}
+          </Text>
+          <ProjectCategoryPicker
+            selected={interestedCategories}
+            onChange={setInterestedCategories}
+            isArabic={isArabic}
+          />
+        </View>
+      ) : null}
+
       {/* Confirm button */}
       <TouchableOpacity
-        style={[styles.confirmBtn, !role && styles.confirmBtnDisabled]}
+        style={[
+          styles.confirmBtn,
+          (!role || (role === 'freelancer' && interestedCategories.length === 0)) && styles.confirmBtnDisabled,
+        ]}
         onPress={handleConfirm}
-        disabled={!role || loading}
+        disabled={!role || (role === 'freelancer' && interestedCategories.length === 0) || loading}
       >
         {loading
           ? <ActivityIndicator color="#fff" size="small" />
@@ -111,12 +149,13 @@ export default function RoleSelectScreen() {
             </Text>
         }
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: spacing.lg, justifyContent: 'center' },
+  container: { flex: 1, backgroundColor: colors.bg },
+  scrollContent: { padding: spacing.lg, paddingTop: spacing.xl, paddingBottom: 40 },
 
   header: { alignItems: 'center', marginBottom: spacing.xl },
   logo:   { fontSize: 42, fontWeight: '900', color: colors.primary, marginBottom: 16 },
@@ -149,4 +188,8 @@ const styles = StyleSheet.create({
   },
   confirmBtnDisabled: { opacity: 0.4 },
   confirmBtnText: { color: '#fff', fontWeight: '900', fontSize: font.lg },
+
+  catBlock:  { marginBottom: spacing.lg },
+  catTitle:  { color: colors.text, fontSize: font.base, fontWeight: '800', marginBottom: 6 },
+  catHint:   { color: colors.textMuted, fontSize: font.sm, lineHeight: 20, marginBottom: spacing.sm },
 })

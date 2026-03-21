@@ -24,13 +24,19 @@ function StarRow({ rating }: { rating: number }) {
 }
 
 // ─── Freelancer Card ──────────────────────────────────────────────────────────
-function FreelancerCard({ freelancer, onMessage, onProfile, isArabic }: {
-  freelancer: any; onMessage: () => void; onProfile: () => void; isArabic: boolean
+function FreelancerCard({ freelancer, onMessage, onProfile, onViewReviews, isArabic }: {
+  freelancer: any
+  onMessage: () => void
+  onProfile: () => void
+  onViewReviews: () => void
+  isArabic: boolean
 }) {
   const dir = isArabic ? 'right' as const : 'left' as const
   const initial = freelancer.username?.[0]?.toUpperCase() || '?'
   const avatarColors = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899']
   const color = avatarColors[freelancer.username?.charCodeAt(0) % avatarColors.length] || colors.primary
+  const rev = freelancer.totalReviews ?? 0
+  const proj = freelancer.totalProjects ?? 0
 
   return (
     <TouchableOpacity style={styles.card} onPress={onProfile} activeOpacity={0.85}>
@@ -44,15 +50,26 @@ function FreelancerCard({ freelancer, onMessage, onProfile, isArabic }: {
           <Text style={[styles.cardBio, { textAlign: dir }]} numberOfLines={1}>
             {freelancer.bio || (isArabic ? 'مستقل محترف' : 'Professional Freelancer')}
           </Text>
-          <View style={[styles.ratingRow, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
-            <StarRow rating={freelancer.rating ?? 0} />
-            <Text style={styles.ratingText}>{(freelancer.rating ?? 0).toFixed(1)}</Text>
-            {freelancer.totalProjects > 0 && (
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={onViewReviews}
+            accessibilityRole="button"
+            accessibilityLabel={isArabic ? 'عرض التقييمات والمراجعات' : 'View ratings and reviews'}
+          >
+            <View style={[styles.ratingRow, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
+              <StarRow rating={freelancer.rating ?? 0} />
+              <Text style={styles.ratingText}>{(freelancer.rating ?? 0).toFixed(1)}</Text>
               <Text style={styles.projectsText}>
-                · {freelancer.totalProjects} {isArabic ? 'مشروع' : 'projects'}
+                · {rev} {isArabic ? 'تقييم' : 'reviews'}
               </Text>
-            )}
-          </View>
+              <Text style={styles.projectsText}>
+                · {proj} {isArabic ? 'مشروع' : 'projects'}
+              </Text>
+            </View>
+            <Text style={styles.ratingTapHint}>
+              {isArabic ? 'اضغط لعرض التقييمات التفصيلية' : 'Tap for full ratings & reviews'}
+            </Text>
+          </TouchableOpacity>
         </View>
         {/* Country badge */}
         {freelancer.country && (
@@ -110,11 +127,23 @@ function ProfileModal({ freelancer, visible, onClose, onMessage, onViewReviews, 
               </View>
               <Text style={{ color: colors.text, fontSize: font.xl, fontWeight: '800' }}>{freelancer.username}</Text>
               {freelancer.country && <Text style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>📍 {freelancer.country}</Text>}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 }}>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => { onClose(); onViewReviews() }}
+                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6, flexWrap: 'wrap' }}
+              >
                 <StarRow rating={freelancer.rating ?? 0} />
                 <Text style={{ color: colors.warning, fontWeight: '700' }}>{(freelancer.rating ?? 0).toFixed(1)}</Text>
-                <Text style={{ color: colors.textDim }}>· {freelancer.totalProjects ?? 0} {isArabic ? 'مشروع' : 'projects'}</Text>
-              </View>
+                <Text style={{ color: colors.textDim }}>
+                  · {freelancer.totalReviews ?? 0} {isArabic ? 'تقييم' : 'reviews'}
+                </Text>
+                <Text style={{ color: colors.textDim }}>
+                  · {freelancer.totalProjects ?? 0} {isArabic ? 'مشروع' : 'projects'}
+                </Text>
+                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
+                  {isArabic ? ' ← عرض' : 'View →'}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* Bio */}
@@ -368,9 +397,10 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontWeight: '800', fontSize: font.xl },
   cardName:   { color: colors.text, fontWeight: '800', fontSize: font.base },
   cardBio:    { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
-  ratingRow:  { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 },
-  ratingText: { color: colors.warning, fontSize: font.sm, fontWeight: '700', marginLeft: 2 },
-  projectsText: { color: colors.textDim, fontSize: font.sm },
+  ratingRow:      { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4, flexWrap: 'wrap' },
+  ratingText:     { color: colors.warning, fontSize: font.sm, fontWeight: '700', marginLeft: 2 },
+  projectsText:   { color: colors.textDim, fontSize: font.sm },
+  ratingTapHint:  { color: colors.primary, fontSize: 10, fontWeight: '600', marginTop: 4 },
   countryBadge: { backgroundColor: colors.cardDark, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: colors.border },
   countryText: { color: colors.textMuted, fontSize: 11 },
 

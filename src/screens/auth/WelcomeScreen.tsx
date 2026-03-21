@@ -2,75 +2,118 @@ import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar,
   Animated, Image, SafeAreaView, Alert, ActivityIndicator,
+  InteractionManager, Platform,
 } from 'react-native'
 import { colors, spacing, radius, font } from '../../theme'
 import { useLang } from '../../context/LanguageContext'
-import { GoogleSignin } from '../config/firebase'
-import auth from '@react-native-firebase/auth'
+import { GoogleSignin } from '../../config/firebase'
+import { getAuth, GoogleAuthProvider, signInWithCredential } from '@react-native-firebase/auth'
 import { googleSignInAPI } from '../../api'
 import { useAuth } from '../../context/AuthContext'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 // ─── Screen ────────────────────────────────────────────────────────────────────
 
+function safeAlert(title: string, message: string) {
+  // Avoid "not attached to an Activity" when native UI failed (NULL_PRESENTER)
+  setTimeout(() => {
+    try {
+      Alert.alert(title, message)
+    } catch {
+      console.warn('[Alert]', title, message)
+    }
+  }, 250)
+}
+
+/** Wait until Android Activity is ready for Google’s sign-in overlay (RN 0.79 / bridgeless). */
+function runWhenActivityReady(fn: () => void) {
+  InteractionManager.runAfterInteractions(() => {
+    requestAnimationFrame(() => {
+      const ms = Platform.OS === 'android' ? 280 : 0
+      setTimeout(fn, ms)
+    })
+  })
+}
+
 export default function WelcomeScreen({ navigation }: any) {
   const { isArabic, lang, toggleLang } = useLang()
   const { login } = useAuth()
   const [googleLoading, setGoogleLoading] = useState(false)
+  const googleBusyRef = useRef(false)
 
   // Entrance animations
   const fadeIn  = useRef(new Animated.Value(0)).current
   const slideUp = useRef(new Animated.Value(50)).current
   const illustrationScale = useRef(new Animated.Value(0.88)).current
 
-  const handleGoogleSignIn = async () => {
-    try {
-      setGoogleLoading(true)
-      await GoogleSignin.hasPlayServices()
-      const result = await GoogleSignin.signIn()
+  const handleGoogleSignIn = () => {
+    if (googleLoading || googleBusyRef.current) return
+    googleBusyRef.current = true
+    setGoogleLoading(true)
 
-      if (result.type === 'cancelled' || !result.data) {
-        setGoogleLoading(false)
-        return
-      }
+    runWhenActivityReady(() => {
+      void (async () => {
+        try {
+          await AsyncStorage.multiRemove(['user', 'token'])
+          await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true })
 
-      const idToken = result.data.idToken
-      if (!idToken) throw new Error('No idToken received')
+          // Do NOT call signOut() immediately before signIn() — causes ASYNC_OP_IN_PROGRESS on Android.
+          const result = await GoogleSignin.signIn()
 
-      const googleCredential = auth.GoogleAuthProvider.credential(idToken)
-      await auth().signInWithCredential(googleCredential)
-      const firebaseUser = auth().currentUser
-      if (!firebaseUser) throw new Error('Firebase user not found')
+          if (result.type === 'cancelled' || !result.data) {
+            return
+          }
 
-      const payload = {
-        email:      firebaseUser.email,
-        name:       firebaseUser.displayName || result.data.user?.name,
-        googleId:   firebaseUser.uid,
-        profilePic: firebaseUser.photoURL || result.data.user?.photo || '',
-      }
+          const idToken = result.data.idToken
+          if (!idToken) throw new Error('No idToken received')
 
-      // Try signing in without role — backend returns error if new user
-      try {
-        const { data } = await googleSignInAPI(payload)
-        await AsyncStorage.setItem('token', data.token)
-        login(data)
-      } catch (e: any) {
-        if (e?.response?.data?.error === 'role_required') {
-          // New user — ask for role
-          navigation.navigate('RoleSelect', { googlePayload: payload })
-        } else {
-          throw e
+          const authInstance = getAuth()
+          const googleCredential = GoogleAuthProvider.credential(idToken)
+          const cred = await signInWithCredential(authInstance, googleCredential)
+          const firebaseUser = cred.user
+          if (!firebaseUser) throw new Error('Firebase user not found')
+
+          const emailRaw = firebaseUser.email
+          if (!emailRaw?.trim()) throw new Error('Google account has no email')
+
+          const payload = {
+            email:      emailRaw.trim().toLowerCase(),
+            name:       firebaseUser.displayName || result.data.user?.name,
+            googleId:   firebaseUser.uid,
+            profilePic: firebaseUser.photoURL || result.data.user?.photo || '',
+          }
+
+          try {
+            const { data } = await googleSignInAPI(payload)
+            const { token, ...userData } = data
+            await login(userData, token)
+          } catch (e: any) {
+            if (e?.response?.data?.error === 'role_required') {
+              navigation.navigate('RoleSelect', { googlePayload: payload })
+            } else {
+              throw e
+            }
+          }
+        } catch (error: any) {
+          const code = error?.code
+          const msg  = error?.message || ''
+          console.log('[Google] ERROR:', code, msg)
+          const cancelled =
+            code === 'SIGN_IN_CANCELLED'
+            || String(msg).includes('SIGN_IN_CANCELLED')
+            || code === '12501' // user cancelled (Android)
+          if (!cancelled) {
+            safeAlert(
+              'Sign-In Error',
+              `Code: ${code || 'unknown'}\n${msg || 'Google Sign-In failed'}`
+            )
+          }
+        } finally {
+          googleBusyRef.current = false
+          setGoogleLoading(false)
         }
-      }
-    } catch (error: any) {
-      if (error.code !== 'SIGN_IN_CANCELLED') {
-        Alert.alert(
-          isArabic ? 'خطأ في تسجيل الدخول' : 'Sign-In Error',
-          error.message || 'Google Sign-In failed'
-        )
-      }
-    }
-    setGoogleLoading(false)
+      })()
+    })
   }
 
   useEffect(() => {

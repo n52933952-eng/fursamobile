@@ -6,9 +6,12 @@ import {
 import { colors, spacing, radius, font } from '../../theme'
 import { registerAPI } from '../../api'
 import { useLang } from '../../context/LanguageContext'
+import ProjectCategoryPicker from '../../components/ProjectCategoryPicker'
 
 export default function RegisterScreen({ navigation }: any) {
-  const [form, setForm]         = useState({ username: '', email: '', password: '', role: '' })
+  const [form, setForm]         = useState({
+    username: '', email: '', password: '', role: '', interestedCategories: [] as string[],
+  })
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading]   = useState(false)
   const { tr, isArabic, lang, toggleLang } = useLang()
@@ -26,6 +29,13 @@ export default function RegisterScreen({ navigation }: any) {
       Alert.alert(
         isArabic ? 'خطأ' : 'Error',
         isArabic ? 'يرجى ملء جميع الحقول واختيار دور' : 'Please fill all fields and select a role'
+      )
+      return
+    }
+    if (form.role === 'freelancer' && form.interestedCategories.length === 0) {
+      Alert.alert(
+        isArabic ? 'خطأ' : 'Error',
+        isArabic ? 'اختر فئة مشروع واحدة على الأقل (مثل التصميم أو البرمجة)' : 'Pick at least one category (e.g. Design, Development)'
       )
       return
     }
@@ -77,6 +87,29 @@ export default function RegisterScreen({ navigation }: any) {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Project categories (same list as posting a project) */}
+      {form.role === 'freelancer' ? (
+        <View style={{ marginBottom: spacing.md }}>
+          <Text style={[styles.label, { textAlign: textDir }]}>
+            {isArabic ? 'مجالات اهتمامك' : 'Your project categories'}
+          </Text>
+          <Text style={[styles.hint, { textAlign: textDir }]}>
+            {form.role === 'freelancer'
+              ? (isArabic
+                ? 'سترى في الرئيسية المشاريع المفتوحة في هذه الفئات فقط. يمكنك تعديلها لاحقاً من الملف الشخصي.'
+                : 'Your home feed shows open projects in these categories. You can change this anytime in Profile.')
+              : (isArabic
+                ? 'يساعدنا على تخصيص تجربتك عند نشر المشاريع. يمكنك تعديلها لاحقاً من الملف الشخصي.'
+                : 'Helps personalize your experience when you post projects. Edit anytime in Profile.')}
+          </Text>
+          <ProjectCategoryPicker
+            selected={form.interestedCategories}
+            onChange={(interestedCategories) => setForm((f) => ({ ...f, interestedCategories }))}
+            isArabic={isArabic}
+          />
+        </View>
+      ) : null}
 
       {/* Fields */}
       <View style={styles.card}>
@@ -149,6 +182,7 @@ const styles = StyleSheet.create({
   roleLabel:      { color: colors.textMuted, fontWeight: '700', fontSize: font.base, marginBottom: 4 },
   roleLabelActive:{ color: colors.primary },
   roleDesc:       { color: colors.textDim, fontSize: 11 },
+  hint:           { color: colors.textDim, fontSize: 12, lineHeight: 18, marginBottom: spacing.sm },
   card: { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
   inputBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md },
   input:   { color: colors.text, fontSize: font.base, paddingVertical: 14, flex: 1 },

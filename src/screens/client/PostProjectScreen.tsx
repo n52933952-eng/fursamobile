@@ -6,8 +6,9 @@ import {
 import { useLang } from '../../context/LanguageContext'
 import { createProjectAPI, aiDescriptionAPI, aiPricingAPI } from '../../api'
 import { colors, spacing, radius, font } from '../../theme'
+import { PROJECT_CATEGORIES } from '../../constants/projectCategories'
 
-const CATEGORIES = ['Design', 'Development', 'Writing', 'Marketing', 'Video', 'Translation', 'Data', 'Other']
+const CATEGORIES = [...PROJECT_CATEGORIES]
 const SKILLS_LIST = ['React', 'Node.js', 'Python', 'UI/UX', 'Figma', 'Photoshop', 'SEO', 'WordPress', 'Laravel', 'Mobile', 'Android', 'iOS']
 
 // ─── AI Price Suggestion Banner ───────────────────────────────────────────────
