@@ -3,9 +3,10 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLang } from '../../context/LanguageContext'
 import { createProjectAPI, aiDescriptionAPI, aiPricingAPI } from '../../api'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 import { PROJECT_CATEGORIES } from '../../constants/projectCategories'
 
 const CATEGORIES = [...PROJECT_CATEGORIES]
@@ -120,6 +121,7 @@ function AiDescModal({ visible, result, onUse, onClose, isArabic }: {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function PostProjectScreen() {
+  const insets = useSafeAreaInsets()
   const { isArabic, lang, toggleLang } = useLang()
   const dir = isArabic ? 'right' as const : 'left' as const
 
@@ -160,8 +162,14 @@ export default function PostProjectScreen() {
       const { data } = await aiDescriptionAPI({ keywords: title || category, category: category || 'General' })
       setAiDescResult(data.description || '')
       setShowDescModal(true)
-    } catch {
-      Alert.alert(isArabic ? 'خطأ' : 'Error', isArabic ? 'فشل توليد الوصف' : 'AI description failed. Please try again.')
+    } catch (err: any) {
+      const serverMsg = err?.response?.data?.error
+      Alert.alert(
+        isArabic ? 'خطأ' : 'Error',
+        typeof serverMsg === 'string' && serverMsg.length > 0
+          ? serverMsg
+          : (isArabic ? 'فشل توليد الوصف. تحقق من الاتصال وGROQ_API_KEY على السيرفر.' : 'AI description failed. Check server GROQ_API_KEY and try again.'),
+      )
     }
     setAiDescLoading(false)
   }
@@ -180,8 +188,14 @@ export default function PostProjectScreen() {
         skills,
       })
       setPriceSuggestion(data)
-    } catch {
-      Alert.alert(isArabic ? 'خطأ' : 'Error', isArabic ? 'فشل اقتراح السعر' : 'Smart pricing failed. Please try again.')
+    } catch (err: any) {
+      const serverMsg = err?.response?.data?.error
+      Alert.alert(
+        isArabic ? 'خطأ' : 'Error',
+        typeof serverMsg === 'string' && serverMsg.length > 0
+          ? serverMsg
+          : (isArabic ? 'فشل اقتراح السعر' : 'Smart pricing failed. Please try again.'),
+      )
     }
     setAiPriceLoading(false)
   }
@@ -211,7 +225,7 @@ export default function PostProjectScreen() {
     <View style={styles.container}>
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: screenHeaderPaddingTop(insets.top), paddingBottom: spacing.sm }]}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerTitle, { textAlign: dir }]}>
             {isArabic ? '➕ أضف مشروعاً' : '➕ Post a Project'}
@@ -448,7 +462,7 @@ export default function PostProjectScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container:   { flex: 1, backgroundColor: colors.bg },
-  header:      { flexDirection: 'row', alignItems: 'center', paddingTop: 56, paddingBottom: spacing.md, paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
   headerTitle: { color: colors.text, fontSize: font.xl, fontWeight: '800' },
   headerSub:   { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
   langBtn:     { backgroundColor: colors.card, borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: colors.border },

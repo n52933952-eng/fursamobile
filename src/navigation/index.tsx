@@ -28,6 +28,7 @@ import ContractScreen        from '../screens/shared/ContractScreen'
 import NotificationsScreen   from '../screens/shared/NotificationsScreen'
 import DisputeScreen         from '../screens/shared/DisputeScreen'
 import ReviewsScreen         from '../screens/shared/ReviewsScreen'
+import AIAssistantScreen     from '../screens/shared/AIAssistantScreen'
 
 // Client Screens
 import PostProjectScreen        from '../screens/client/PostProjectScreen'
@@ -141,6 +142,7 @@ function MainStack() {
       <Stack.Screen name="DisputeScreen"            component={DisputeScreen} />
       <Stack.Screen name="ReviewsScreen"            component={ReviewsScreen} />
       <Stack.Screen name="FreelancerSearchScreen"   component={FreelancerSearchScreen} />
+      <Stack.Screen name="AIAssistantScreen"        component={AIAssistantScreen} />
     </Stack.Navigator>
   )
 }

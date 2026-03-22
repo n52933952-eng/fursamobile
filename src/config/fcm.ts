@@ -5,6 +5,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { Platform, PermissionsAndroid } from 'react-native'
 import {
   getMessaging,
   getToken,
@@ -15,6 +16,23 @@ import {
   AuthorizationStatus,
 } from '@react-native-firebase/messaging'
 import { saveFcmTokenAPI } from '../api'
+
+/** Android 13+ (API 33): system dialog "Allow notifications?" — FCM's requestPermission alone often skips this. */
+async function requestAndroidPostNotificationsPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true
+  const api = typeof Platform.Version === 'number' ? Platform.Version : parseInt(String(Platform.Version), 10)
+  if (Number.isNaN(api) || api < 33) return true
+
+  try {
+    const perm =
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS ?? 'android.permission.POST_NOTIFICATIONS'
+    const result = await PermissionsAndroid.request(perm as 'android.permission.POST_NOTIFICATIONS')
+    return result === PermissionsAndroid.RESULTS.GRANTED
+  } catch (e) {
+    console.warn('[FCM] POST_NOTIFICATIONS request failed:', e)
+    return false
+  }
+}
 
 // ─── Lazy-load notifee (optional until installed) ─────────────────────────────
 function getNotifee() {
@@ -45,6 +63,15 @@ export async function createNotificationChannels() {
   const notifee = getNotifee()
   const AndroidImportance = getAndroidImportance()
   if (!notifee || !AndroidImportance) return
+
+  // Must match backend FCM android.notification.channelId (services/fcm.js)
+  await notifee.createChannel({
+    id: 'fursa_default',
+    name: 'Fursa',
+    importance: AndroidImportance.HIGH,
+    sound: 'default',
+    vibration: true,
+  })
 
   await notifee.createChannel({
     id: 'fursa_messages',
@@ -80,7 +107,8 @@ async function showNotification(
     android: {
       channelId,
       importance: 5,
-      smallIcon: 'ic_launcher',
+      // White-on-transparent drawable (see scripts/generate-branding.cjs → ic_stat_fursa)
+      smallIcon: 'ic_stat_fursa',
       pressAction: { id: 'default', launchActivity: 'default' },
       sound: 'default',
       vibrationPattern: [300, 500],
@@ -99,6 +127,12 @@ export async function setupPushNotifications(accessToken?: string | null): Promi
 
     fcmListenerCleanups.forEach((fn) => fn())
     fcmListenerCleanups = []
+
+    const androidOk = await requestAndroidPostNotificationsPermission()
+    if (Platform.OS === 'android' && !androidOk) {
+      console.log('[FCM] User denied notification permission (Android)')
+      return
+    }
 
     const authStatus = await requestPermission(messaging)
     const enabled =
@@ -149,6 +183,11 @@ export function registerBackgroundHandler() {
   try {
     const messaging = getMessaging()
     setBackgroundMessageHandler(messaging, async (remoteMessage: any) => {
+      // When the server sends a `notification` payload, Android/iOS already show the system banner.
+      // Showing again via Notifee would duplicate the notification.
+      if (remoteMessage.notification?.title != null || remoteMessage.notification?.body != null) {
+        return
+      }
       const { notification, data } = remoteMessage
       const title = notification?.title || data?.title || 'Fursa'
       const body = notification?.body || data?.body || ''

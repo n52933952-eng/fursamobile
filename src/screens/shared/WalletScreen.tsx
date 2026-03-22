@@ -4,6 +4,7 @@ import {
   Modal, TextInput, Alert, ActivityIndicator, RefreshControl,
   Image, Animated, Linking, Switch,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
@@ -12,7 +13,7 @@ import {
   getWalletAPI, getTransactionsAPI, depositAPI, withdrawAPI,
   createPaytabsPaymentAPI,
 } from '../../api'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 // ─── Transaction config ────────────────────────────────────────────────────────
 
@@ -829,6 +830,7 @@ function HowItWorks({ isClient, isArabic }: { isClient: boolean; isArabic: boole
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function WalletScreen() {
+  const insets = useSafeAreaInsets()
   const { user }   = useAuth()
   const { socket } = useSocket()
   const { tr, isArabic, lang, toggleLang } = useLang()
@@ -887,7 +889,7 @@ export default function WalletScreen() {
     <View style={styles.container}>
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: screenHeaderPaddingTop(insets.top), paddingBottom: spacing.sm }]}>
         <View style={styles.logoBox}>
           <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
         </View>
@@ -1035,7 +1037,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
   // Header
-  header:      { flexDirection: 'row', alignItems: 'center', paddingTop: 52, paddingBottom: 14, paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
   logoBox:     { width: 36, height: 36, borderRadius: 10, overflow: 'hidden', backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginRight: spacing.sm },
   logo:        { width: 30, height: 30 },
   headerTitle: { flex: 1, color: colors.text, fontSize: font.xl, fontWeight: '800' },

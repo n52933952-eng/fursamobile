@@ -78,6 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(storedToken)
           // Keep disk copy aligned (e.g. older builds saved `id` only)
           await AsyncStorage.setItem('user', JSON.stringify(normalized))
+          // Re-register FCM after cold start — otherwise token is never sent until next login
+          setupPushNotifications(storedToken).catch(() => {})
         }
       } catch {
         try {

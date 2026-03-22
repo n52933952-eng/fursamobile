@@ -5,6 +5,7 @@ import {
   Keyboard,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
@@ -290,6 +291,7 @@ function BidModal({ project, visible, onClose, onSubmit, isArabic, tr }: {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets()
   const { user }    = useAuth()
   const { socket, unreadNotifications } = useSocket()
   const { tr, isArabic, lang } = useLang()
@@ -420,16 +422,32 @@ export default function HomeScreen() {
     completed: projects.filter(p => p.status === 'completed').length,
   }
 
+  // Fixed header height: absolute bar + ScrollView paddingTop — layout below won’t jump on EN/AR toggle
+  const headerPadTop = Math.max(insets.top, 6) + 4
+  const HEADER_ROW_H = 64 // fixed slot: up to 2-line greeting + username (no reflow below)
+  const headerTotalHeight = headerPadTop + HEADER_ROW_H + spacing.sm
+
   return (
     <View style={styles.container}>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <View style={styles.header}>
-        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-          <Text style={[styles.greetingText, { textAlign: dir }]}>
+      {/* ── Header: absolute slots (greeting vs actions) — stable height for scroll content ── */}
+      <View style={[styles.headerAbsolute, { height: headerTotalHeight }]} pointerEvents="box-none">
+        <Animated.View
+          style={[
+            styles.headerGreetingAbs,
+            {
+              top: headerPadTop,
+              opacity: fadeAnim,
+              ...(isArabic
+                ? { right: spacing.md, left: undefined }
+                : { left: spacing.md, right: undefined }),
+            },
+          ]}
+        >
+          <Text style={[styles.greetingText, { textAlign: dir }]} numberOfLines={2}>
             {greeting(isArabic)} 👋
           </Text>
-          <Text style={[styles.username, { textAlign: dir }]}>
+          <Text style={[styles.username, { textAlign: dir }]} numberOfLines={1} ellipsizeMode="tail">
             {user?.username} {isClient
               ? (isArabic ? '(عميل)' : '(Client)')
               : (isArabic ? '(مستقل)' : '(Freelancer)')
@@ -437,7 +455,18 @@ export default function HomeScreen() {
           </Text>
         </Animated.View>
 
-        <View style={styles.headerRight}>
+        <View
+          style={[
+            styles.headerActionsAbs,
+            {
+              top: headerPadTop,
+              flexDirection: isArabic ? 'row-reverse' : 'row',
+              ...(isArabic
+                ? { left: spacing.md, right: undefined }
+                : { right: spacing.md, left: undefined }),
+            },
+          ]}
+        >
           <LangToggle />
           <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('NotificationsScreen')}>
             <Text style={{ fontSize: 20 }}>🔔</Text>
@@ -457,8 +486,23 @@ export default function HomeScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: headerTotalHeight }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
+
+        {/* ── AI Assistant (all users) ───────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.aiAssistantBanner}
+          onPress={() => navigation.navigate('AIAssistantScreen')}
+          activeOpacity={0.85}
+        >
+          <Text style={{ fontSize: 28 }}>✨</Text>
+          <View style={{ flex: 1, marginHorizontal: 10 }}>
+            <Text style={[styles.findFreelancerTitle, { textAlign: dir }]}>{tr.aiAssistant}</Text>
+            <Text style={[styles.findFreelancerSub, { textAlign: dir }]}>{tr.aiAssistantSub}</Text>
+          </View>
+          <Text style={{ color: colors.primary, fontSize: 22 }}>›</Text>
+        </TouchableOpacity>
 
         {/* ══════════════════════════════════════════════════════════════════
             FREELANCER VIEW
@@ -466,12 +510,13 @@ export default function HomeScreen() {
         {!isClient && (
           <>
             {/* ── Freelancer Stats ── */}
+            {/* One row: all four stats (no wrap — frees space for search below) */}
             <View style={styles.flStatsGrid}>
-              <View style={[styles.flStatCard, { flex: 2, borderColor: colors.primary + '44' }]}>
-                <Text style={[styles.flStatBig, { color: colors.success }]}>
+              <View style={[styles.flStatCard, styles.flStatCardEarn, { borderColor: colors.primary + '44' }]}>
+                <Text style={[styles.flStatBig, styles.flStatBigCompact, { color: colors.success }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                   ${totalEarned.toLocaleString()}
                 </Text>
-                <Text style={styles.flStatLabel}>
+                <Text style={styles.flStatLabel} numberOfLines={2}>
                   {isArabic ? 'إجمالي الأرباح' : 'Total Earned'}
                 </Text>
               </View>
@@ -485,21 +530,21 @@ export default function HomeScreen() {
                   freelancerName: user?.username,
                 })}
               >
-                <Text style={[styles.flStatBig, { color: colors.warning }]}>
+                <Text style={[styles.flStatBig, styles.flStatBigCompact, { color: colors.warning }]}>
                   ★ {rating.toFixed(1)}
                 </Text>
-                <Text style={styles.flStatLabel}>{isArabic ? 'التقييم' : 'Rating'}</Text>
-                <Text style={styles.flStatTapHint}>
-                  {isArabic ? 'اضغط للتفاصيل' : 'Tap for details'}
+                <Text style={styles.flStatLabel} numberOfLines={1}>{isArabic ? 'التقييم' : 'Rating'}</Text>
+                <Text style={styles.flStatTapHint} numberOfLines={1}>
+                  {isArabic ? 'تفاصيل' : 'Details'}
                 </Text>
               </TouchableOpacity>
               <View style={styles.flStatCard}>
-                <Text style={[styles.flStatBig, { color: colors.info }]}>{activeBids}</Text>
-                <Text style={styles.flStatLabel}>{isArabic ? 'عروض نشطة' : 'Active Bids'}</Text>
+                <Text style={[styles.flStatBig, styles.flStatBigCompact, { color: colors.info }]}>{activeBids}</Text>
+                <Text style={styles.flStatLabel} numberOfLines={2}>{isArabic ? 'عروض نشطة' : 'Active Bids'}</Text>
               </View>
               <View style={styles.flStatCard}>
-                <Text style={[styles.flStatBig, { color: colors.primary }]}>{wonBids}</Text>
-                <Text style={styles.flStatLabel}>{isArabic ? 'مشاريع رابحة' : 'Won'}</Text>
+                <Text style={[styles.flStatBig, styles.flStatBigCompact, { color: colors.primary }]}>{wonBids}</Text>
+                <Text style={styles.flStatLabel} numberOfLines={2}>{isArabic ? 'مشاريع رابحة' : 'Won'}</Text>
               </View>
             </View>
 
@@ -775,11 +820,30 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
-  // Header
-  header:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: 56, paddingBottom: spacing.md, backgroundColor: colors.cardDark, gap: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
-  greetingText: { color: colors.text, fontSize: font.lg, fontWeight: '800' },
-  username:     { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
-  headerRight:  { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  // Header — absolute overlay; ScrollView uses paddingTop = same total height (no layout shift on RTL)
+  headerAbsolute: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    elevation: 8,
+    backgroundColor: colors.cardDark,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerGreetingAbs: {
+    position: 'absolute',
+    width: '46%',
+    maxWidth: 210,
+  },
+  headerActionsAbs: {
+    position: 'absolute',
+    alignItems: 'center',
+    gap: 4,
+  },
+  greetingText: { color: colors.text, fontSize: font.lg, fontWeight: '800', lineHeight: 22 },
+  username:     { color: colors.textMuted, fontSize: font.sm, marginTop: 1 },
   avatarCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
 
   // Lang toggle
@@ -793,11 +857,27 @@ const styles = StyleSheet.create({
   bellBadgeText:{ color: '#fff', fontSize: 9, fontWeight: '800' },
 
   // ── FREELANCER STATS ────────────────────────────────────────────────────────
-  flStatsGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: spacing.md },
-  flStatCard:   { flex: 1, minWidth: '22%', backgroundColor: colors.card, borderRadius: radius.lg, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  flStatBig:    { fontSize: font.lg, fontWeight: '900', marginBottom: 3 },
-  flStatLabel:  { color: colors.textDim, fontSize: 10, textAlign: 'center', lineHeight: 13 },
-  flStatTapHint:{ color: colors.primary, fontSize: 9, fontWeight: '700', textAlign: 'center', marginTop: 2, opacity: 0.9 },
+  flStatsGrid:     { flexDirection: 'row', flexWrap: 'nowrap', gap: 6, paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs },
+  flStatCard:      { flex: 1, minWidth: 0, backgroundColor: colors.card, borderRadius: radius.md, paddingVertical: 10, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  flStatCardEarn:  { flex: 1.15 },
+  flStatBig:       { fontSize: font.lg, fontWeight: '900', marginBottom: 2 },
+  flStatBigCompact:{ fontSize: font.md, fontWeight: '900' },
+  flStatLabel:     { color: colors.textDim, fontSize: 9, textAlign: 'center', lineHeight: 12 },
+  flStatTapHint:   { color: colors.primary, fontSize: 8, fontWeight: '700', textAlign: 'center', marginTop: 1, opacity: 0.9 },
+
+  // AI Assistant entry
+  aiAssistantBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+    backgroundColor: colors.info + '14',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.info + '44',
+  },
 
   // Search
   searchSection: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },

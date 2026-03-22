@@ -33,6 +33,8 @@ local.properties
 .cxx/
 *.keystore
 !debug.keystore
+# Release signing secrets (never commit)
+android/keystore.properties
 .kotlin/
 
 # node.js

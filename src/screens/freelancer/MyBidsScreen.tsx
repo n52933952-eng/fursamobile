@@ -3,12 +3,13 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   RefreshControl, ActivityIndicator, Animated,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { getMyProposalsAPI } from '../../api'
 import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
 import { useAuth } from '../../context/AuthContext'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -306,7 +307,7 @@ export default function MyBidsScreen() {
       )}
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: screenHeaderPaddingTop(insets.top), paddingBottom: spacing.sm }]}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerTitle, { textAlign: dir }]}>
             {isArabic ? '📋 عروضي' : '📋 My Bids'}
@@ -378,7 +379,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
   // Header
-  header:      { flexDirection: 'row', alignItems: 'center', paddingTop: 56, paddingBottom: 14, paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
   headerTitle: { color: colors.text, fontSize: font.xl, fontWeight: '800' },
   headerSub:   { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
   langBtn:     { backgroundColor: colors.card, borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: colors.border },

@@ -71,6 +71,8 @@ const t = {
     noConversationsMsg: 'Use the search bar to find a user and start a conversation',
     noUsersFound:       'No users found for',
     tryDifferentName:   'Try a different name',
+    existingConversations: 'Conversations',
+    tapToMessage:       'Message →',
 
     // ── Profile ─────────────────────────────────────────────
     myProfile:    'My Profile',
@@ -164,6 +166,15 @@ const t = {
     invalidCode:    'Invalid code. Hint: try 1234',
     enterOtp:       'Enter the 4-digit code',
 
+    // ── AI Assistant ───────────────────────────────────────────
+    aiAssistant:       'AI Assistant',
+    aiAssistantSub:    'Ask anything about freelancing or using Fursa',
+    aiWelcome:         'Hi! I can help with projects, bids, pricing, skills, and more. What would you like to know?',
+    aiPlaceholder:     'Type your message...',
+    aiSend:            'Send',
+    aiThinking:        'Thinking...',
+    aiError:           'Could not get a reply. Try again.',
+
     // ── Misc ─────────────────────────────────────────────────
     signIn:         'Sign In',
     enterEmail:     'Enter your email',
@@ -245,6 +256,8 @@ const t = {
     noConversationsMsg: 'استخدم شريط البحث للعثور على مستخدم وبدء محادثة',
     noUsersFound:       'لم يتم العثور على مستخدمين لـ',
     tryDifferentName:   'جرب اسماً مختلفاً',
+    existingConversations: 'المحادثات',
+    tapToMessage:       '← رسالة',
 
     // ── Profile ─────────────────────────────────────────────
     myProfile:    'ملفي الشخصي',
@@ -337,6 +350,15 @@ const t = {
     verify:         'تحقق',
     invalidCode:    'رمز غير صحيح. تلميح: جرب 1234',
     enterOtp:       'أدخل الرمز المكوّن من 4 أرقام',
+
+    // ── AI Assistant ───────────────────────────────────────────
+    aiAssistant:       'المساعد الذكي',
+    aiAssistantSub:    'اسأل عن العمل الحر أو استخدام منصة فرصة',
+    aiWelcome:         'مرحباً! يمكنني المساعدة في المشاريع والعروض والتسعير والمهارات وغيرها. ما الذي تريد معرفته؟',
+    aiPlaceholder:     'اكتب رسالتك...',
+    aiSend:            'إرسال',
+    aiThinking:        'جاري التفكير...',
+    aiError:           'تعذر الحصول على رد. حاول مرة أخرى.',
 
     // ── Misc ─────────────────────────────────────────────────
     signIn:         'تسجيل الدخول',

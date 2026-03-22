@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Alert, ActivityIndicator, Modal, TextInput,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
@@ -10,7 +11,7 @@ import { useLang } from '../../context/LanguageContext'
 import {
   getProjectAPI, getProposalsAPI, acceptProposalAPI, submitProposalAPI,
 } from '../../api'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -229,6 +230,7 @@ function BidModal({ projectId, visible, onClose, onSubmit, isArabic }: any) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ProjectDetailScreen() {
+  const insets = useSafeAreaInsets()
   const { user }             = useAuth()
   const { socket }           = useSocket()
   const { isArabic, toggleLang, lang } = useLang()
@@ -349,7 +351,7 @@ export default function ProjectDetailScreen() {
     <View style={styles.container}>
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: screenHeaderPaddingTop(insets.top), paddingBottom: spacing.sm }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
@@ -509,7 +511,7 @@ const styles = StyleSheet.create({
   center:    { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   errorText: { color: colors.textMuted, fontSize: font.base },
 
-  header:      { flexDirection: 'row', alignItems: 'center', paddingTop: 56, paddingHorizontal: spacing.md, paddingBottom: spacing.md, backgroundColor: colors.cardDark },
+  header:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark },
   backBtn:     { width: 40, height: 40, borderRadius: radius.full, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   backArrow:   { color: colors.text, fontSize: font.lg, lineHeight: 22 },
   headerTitle: { flex: 1, color: colors.text, fontSize: font.lg, fontWeight: '700', textAlign: 'center' },

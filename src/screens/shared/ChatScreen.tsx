@@ -3,12 +3,13 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
 import { getConversationsAPI, searchUsersAPI } from '../../api'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -24,27 +25,34 @@ function timeAgo(iso: string) {
 
 // ─── Conversation Card ────────────────────────────────────────────────────────
 
-function ConversationCard({ conv, currentUserId, onPress }: {
+function ConversationCard({ conv, currentUserId, onPress, isArabic, dir }: {
   conv: any; currentUserId: string; onPress: () => void
+  isArabic: boolean
+  dir: 'left' | 'right'
 }) {
   const lastMsg  = conv.lastMessage || conv.messages?.[conv.messages.length - 1]
   const other    = conv.participants?.find((p: any) => p._id !== currentUserId) || conv.otherUser
   const initials = (other?.username || '?')[0]?.toUpperCase()
+  const rowDir = isArabic ? 'row-reverse' as const : 'row' as const
 
   return (
-    <TouchableOpacity style={styles.convCard} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[styles.convCard, { flexDirection: rowDir }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
       <View style={styles.convAvatar}>
         <Text style={styles.convAvatarText}>{initials}</Text>
       </View>
-      <View style={{ flex: 1 }}>
-        <View style={styles.convRow}>
-          <Text style={styles.convName} numberOfLines={1}>{other?.username || 'User'}</Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={[styles.convRow, { flexDirection: rowDir }]}>
+          <Text style={[styles.convName, { textAlign: dir }]} numberOfLines={1}>{other?.username || 'User'}</Text>
           {lastMsg?.createdAt && (
             <Text style={styles.convTime}>{timeAgo(lastMsg.createdAt)}</Text>
           )}
         </View>
-        <Text style={styles.convLastMsg} numberOfLines={1}>
-          {lastMsg?.text || 'Start a conversation...'}
+        <Text style={[styles.convLastMsg, { textAlign: dir }]} numberOfLines={1}>
+          {lastMsg?.text || (isArabic ? 'ابدأ المحادثة...' : 'Start a conversation...')}
         </Text>
       </View>
     </TouchableOpacity>
@@ -53,19 +61,23 @@ function ConversationCard({ conv, currentUserId, onPress }: {
 
 // ─── User Search Result Card ──────────────────────────────────────────────────
 
-function UserCard({ user: u, onPress }: { user: any; onPress: () => void }) {
+function UserCard({ user: u, onPress, isArabic, dir, tapLabel }: { user: any; onPress: () => void; isArabic: boolean; dir: 'left' | 'right'; tapLabel: string }) {
   const initials = (u.username || '?')[0]?.toUpperCase()
+  const rowDir = isArabic ? 'row-reverse' as const : 'row' as const
+  const roleLabel = u.role === 'client'
+    ? (isArabic ? '👤 عميل' : '👤 Client')
+    : (isArabic ? '💼 مستقل' : '💼 Freelancer')
   return (
-    <TouchableOpacity style={styles.userCard} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={[styles.userCard, { flexDirection: rowDir }]} onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.convAvatar, { backgroundColor: u.role === 'client' ? colors.info : colors.primary }]}>
         <Text style={styles.convAvatarText}>{initials}</Text>
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.convName}>{u.username}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[styles.convName, { textAlign: dir }]}>{u.username}</Text>
+        <View style={{ flexDirection: rowDir, alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <View style={[styles.roleBadge, { backgroundColor: u.role === 'client' ? colors.info + '22' : colors.primary + '22' }]}>
             <Text style={[styles.roleText, { color: u.role === 'client' ? colors.info : colors.primary }]}>
-              {u.role === 'client' ? '👤 Client' : '💼 Freelancer'}
+              {roleLabel}
             </Text>
           </View>
           {u.rating > 0 && (
@@ -73,7 +85,7 @@ function UserCard({ user: u, onPress }: { user: any; onPress: () => void }) {
           )}
         </View>
       </View>
-      <Text style={styles.startChat}>Message →</Text>
+      <Text style={[styles.startChat, { textAlign: dir }]}>{tapLabel}</Text>
     </TouchableOpacity>
   )
 }
@@ -81,6 +93,7 @@ function UserCard({ user: u, onPress }: { user: any; onPress: () => void }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function ChatScreen() {
+  const insets = useSafeAreaInsets()
   const { user }   = useAuth()
   const navigation = useNavigation<any>()
   const { socket, markMessagesRead } = useSocket()
@@ -193,11 +206,11 @@ export default function ChatScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: screenHeaderPaddingTop(insets.top), paddingBottom: spacing.sm }]}>
         <View>
           <Text style={[styles.headerTitle, { textAlign: dir }]}>{tr.messages}</Text>
           {conversations.length > 0 && !isSearching && (
-            <Text style={styles.headerSub}>
+            <Text style={[styles.headerSub, { textAlign: dir }]}>
               {conversations.length} {conversations.length !== 1 ? tr.conversationsPlural : tr.conversations}
             </Text>
           )}
@@ -205,8 +218,8 @@ export default function ChatScreen() {
       </View>
 
       {/* Search box */}
-      <View style={styles.searchRow}>
-        <Text style={{ color: colors.textMuted, marginRight: 8, fontSize: 16 }}>🔍</Text>
+      <View style={[styles.searchRow, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
+        <Text style={{ color: colors.textMuted, fontSize: 16, marginHorizontal: 4 }}>🔍</Text>
         <TextInput
           style={[styles.searchInput, { textAlign: dir }]}
           placeholder={tr.searchConversations}
@@ -235,7 +248,9 @@ export default function ChatScreen() {
           {filteredConvs.length > 0 && (
             <View>
               {isSearching && (
-                <Text style={styles.sectionLabel}>Conversations</Text>
+                <Text style={[styles.sectionLabel, { textAlign: dir }, isArabic && styles.sectionLabelAr]}>
+                  {tr.existingConversations}
+                </Text>
               )}
               {filteredConvs.map((conv, i) => (
                 <ConversationCard
@@ -243,6 +258,8 @@ export default function ChatScreen() {
                   conv={conv}
                   currentUserId={user?._id || ''}
                   onPress={() => openConversation(conv)}
+                  isArabic={isArabic}
+                  dir={dir}
                 />
               ))}
             </View>
@@ -251,21 +268,36 @@ export default function ChatScreen() {
           {/* ── New users from backend search ─────────────────────────────── */}
           {isSearching && (
             <View>
-              <View style={styles.sectionRow}>
-                <Text style={styles.sectionLabel}>{tr.startNewChat}</Text>
-                {searching && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />}
+              <View style={[styles.sectionRow, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
+                <Text style={[styles.sectionLabel, { textAlign: dir, flex: 1 }, isArabic && styles.sectionLabelAr]}>
+                  {tr.startNewChat}
+                </Text>
+                {searching && (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.primary}
+                    style={isArabic ? { marginRight: 8 } : { marginLeft: 8 }}
+                  />
+                )}
               </View>
 
               {newUsers.length > 0 ? (
                 newUsers.map(u => (
-                  <UserCard key={u._id} user={u} onPress={() => openNewChat(u)} />
+                  <UserCard
+                    key={u._id}
+                    user={u}
+                    onPress={() => openNewChat(u)}
+                    isArabic={isArabic}
+                    dir={dir}
+                    tapLabel={tr.tapToMessage}
+                  />
                 ))
               ) : !searching ? (
                 <View style={styles.noResults}>
-                  <Text style={[styles.noResultsText, { textAlign: 'center' }]}>
+                  <Text style={[styles.noResultsText, { textAlign: dir }]}>
                     {tr.noUsersFound} "{search}"
                   </Text>
-                  <Text style={styles.noResultsSub}>{tr.tryDifferentName}</Text>
+                  <Text style={[styles.noResultsSub, { textAlign: dir }]}>{tr.tryDifferentName}</Text>
                 </View>
               ) : null}
             </View>
@@ -275,8 +307,8 @@ export default function ChatScreen() {
           {!isSearching && filteredConvs.length === 0 && (
             <View style={styles.emptyState}>
               <Text style={{ fontSize: 56, marginBottom: 16 }}>💬</Text>
-              <Text style={styles.emptyText}>{tr.noConversations}</Text>
-              <Text style={styles.emptySubText}>{tr.noConversationsMsg}</Text>
+              <Text style={[styles.emptyText, { textAlign: dir }]}>{tr.noConversations}</Text>
+              <Text style={[styles.emptySubText, { textAlign: dir }]}>{tr.noConversationsMsg}</Text>
             </View>
           )}
 
@@ -292,7 +324,7 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container:   { flex: 1, backgroundColor: colors.bg },
 
-  header:      { paddingTop: 56, paddingBottom: spacing.md, paddingHorizontal: spacing.md, backgroundColor: colors.cardDark },
+  header:      { paddingHorizontal: spacing.md, backgroundColor: colors.cardDark },
   headerTitle: { color: colors.text, fontSize: font.xl, fontWeight: '800' },
   headerSub:   { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
 
@@ -300,23 +332,24 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, color: colors.text, fontSize: font.base, paddingVertical: 12 },
   clearBtn:    { padding: 6 },
 
-  sectionRow:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  sectionRow:  { alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   sectionLabel:{ color: colors.textDim, fontSize: font.sm, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  sectionLabelAr:{ textTransform: 'none', letterSpacing: 0 },
 
   // Existing conversation row
-  convCard:       { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  convCard:       { alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
   convAvatar:     { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   convAvatarText: { color: 'white', fontWeight: '800', fontSize: font.lg },
-  convRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  convRow:        { justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8 },
   convName:       { color: colors.text, fontWeight: '700', fontSize: font.base, flex: 1 },
-  convTime:       { color: colors.textDim, fontSize: font.sm, marginLeft: 8 },
+  convTime:       { color: colors.textDim, fontSize: font.sm, flexShrink: 0 },
   convLastMsg:    { color: colors.textMuted, fontSize: font.sm },
 
   // New user card
-  userCard:    { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border + '60' },
+  userCard:    { alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border + '60' },
   roleBadge:   { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.full },
   roleText:    { fontSize: 11, fontWeight: '700' },
-  startChat:   { color: colors.primary, fontSize: font.sm, fontWeight: '700' },
+  startChat:   { color: colors.primary, fontSize: font.sm, fontWeight: '700', flexShrink: 0, maxWidth: 88 },
 
   noResults:    { alignItems: 'center', paddingVertical: 24, paddingHorizontal: spacing.lg },
   noResultsText:{ color: colors.text, fontWeight: '600', fontSize: font.base, textAlign: 'center' },

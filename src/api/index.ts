@@ -189,3 +189,7 @@ export const aiDescriptionAPI    = (data: object)    => api.post('/ai/descriptio
 export const aiPricingAPI        = (data: object)    => api.post('/ai/pricing', data)
 export const aiExtractSkillsAPI  = (data: object)    => api.post('/ai/skills', data)
 export const aiMatchAPI          = (projectId: string) => api.get(`/ai/match/${projectId}`)
+
+/** In-app AI assistant (Groq on server — GROQ_API_KEY) */
+export type AiChatMessage = { role: 'user' | 'assistant'; content: string }
+export const aiChatAPI = (messages: AiChatMessage[]) => api.post('/ai/chat', { messages })

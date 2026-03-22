@@ -3,10 +3,11 @@ import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, ScrollView,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useLang } from '../../context/LanguageContext'
 import { createDisputeAPI } from '../../api'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 const REASONS_EN = [
   'Work not delivered',
@@ -29,6 +30,7 @@ const REASONS_AR = [
 ]
 
 export default function DisputeScreen() {
+  const insets = useSafeAreaInsets()
   const navigation = useNavigation<any>()
   const route      = useRoute<any>()
   const { projectId, projectTitle } = route.params || {}
@@ -82,7 +84,7 @@ export default function DisputeScreen() {
     <View style={styles.container}>
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: screenHeaderPaddingTop(insets.top), paddingBottom: spacing.sm }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
@@ -182,7 +184,7 @@ export default function DisputeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
-  header:      { flexDirection: 'row', alignItems: 'center', paddingTop: 56, paddingHorizontal: spacing.md, paddingBottom: spacing.md, backgroundColor: colors.cardDark },
+  header:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark },
   backBtn:     { width: 40, height: 40, borderRadius: radius.full, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   backArrow:   { color: colors.text, fontSize: font.lg, lineHeight: 22 },
   headerTitle: { flex: 1, color: colors.text, fontSize: font.lg, fontWeight: '700', textAlign: 'center' },

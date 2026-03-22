@@ -26,3 +26,8 @@ export const radius = {
 export const font = {
   sm: 12, md: 14, base: 16, lg: 18, xl: 20, xxl: 24, xxxl: 30,
 }
+
+/** Status-bar inset + small gap (matches Home tab header). Use `useSafeAreaInsets().top`. */
+export function screenHeaderPaddingTop(insetsTop: number) {
+  return Math.max(insetsTop, 6) + 4
+}

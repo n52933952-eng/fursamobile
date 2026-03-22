@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Alert, ActivityIndicator, RefreshControl,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
@@ -11,7 +12,7 @@ import {
   getContractAPI, getMilestonesAPI, requestReviewAPI,
   releasePaymentAPI, markProjectCompleteAPI,
 } from '../../api'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 function formatDate(iso: string) {
   if (!iso) return '—'
@@ -170,6 +171,7 @@ const mStyles = StyleSheet.create({
 
 // ─── Main Screen ────────────────────────────────────────────────────────────────
 export default function ContractScreen() {
+  const insets = useSafeAreaInsets()
   const { user }   = useAuth()
   const { socket } = useSocket()
   const { isArabic, lang, toggleLang } = useLang()
@@ -300,7 +302,7 @@ export default function ContractScreen() {
     <View style={styles.container}>
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: screenHeaderPaddingTop(insets.top), paddingBottom: spacing.sm }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
@@ -520,7 +522,7 @@ const styles = StyleSheet.create({
   errorText: { color: colors.textMuted, fontSize: font.base, textAlign: 'center' },
 
   // Header
-  header:      { flexDirection: 'row', alignItems: 'center', paddingTop: 52, paddingBottom: 14, paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
   backBtn:     { width: 36, height: 36, borderRadius: radius.full, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   backArrow:   { color: colors.text, fontSize: font.lg },
   headerTitle: { flex: 1, color: colors.text, fontSize: font.lg, fontWeight: '800' },

@@ -3,11 +3,12 @@ import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   ActivityIndicator, Alert, StatusBar, Modal,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { useLang } from '../../context/LanguageContext'
 import { useAuth } from '../../context/AuthContext'
 import { searchFreelancersAPI, sendMessageAPI } from '../../api'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 // ─── Skill chips ──────────────────────────────────────────────────────────────
 const SKILLS = ['All', 'React', 'Node.js', 'Design', 'Python', 'Flutter', 'Writing', 'SEO', 'Video', 'Marketing']
@@ -194,6 +195,7 @@ function ProfileModal({ freelancer, visible, onClose, onMessage, onViewReviews, 
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function FreelancerSearchScreen() {
+  const insets = useSafeAreaInsets()
   const navigation = useNavigation<any>()
   const { user }   = useAuth()
   const { isArabic, lang, toggleLang } = useLang()
@@ -240,7 +242,7 @@ export default function FreelancerSearchScreen() {
       <StatusBar barStyle="light-content" backgroundColor={colors.cardDark} />
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: screenHeaderPaddingTop(insets.top), paddingBottom: spacing.sm }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={{ color: colors.primary, fontSize: 22 }}>‹</Text>
         </TouchableOpacity>
@@ -371,7 +373,7 @@ export default function FreelancerSearchScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
-  header:      { flexDirection: 'row', alignItems: 'center', paddingTop: 52, paddingBottom: 14, paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
   backBtn:     { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
   headerTitle: { flex: 1, color: colors.text, fontSize: font.lg, fontWeight: '800' },
   langBtn:     { backgroundColor: colors.card, borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: colors.border },

@@ -2,14 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
-  StatusBar,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
 import { getMessagesAPI, sendMessageAPI } from '../../api'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 type Message = {
   _id?: string
@@ -26,8 +26,9 @@ function formatTime(iso: string) {
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ item, isMine, showTime, showAvatar, recipientInitial }: {
+function MessageBubble({ item, isMine, showTime, showAvatar, recipientInitial, isArabic }: {
   item: Message; isMine: boolean; showTime: boolean; showAvatar: boolean; recipientInitial: string
+  isArabic: boolean
 }) {
   return (
     <View style={[styles.row, isMine ? styles.rowMine : styles.rowOther]}>
@@ -40,7 +41,15 @@ function MessageBubble({ item, isMine, showTime, showAvatar, recipientInitial }:
 
       <View style={[styles.bubbleCol, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
         <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
-          <Text style={[styles.bubbleText, isMine && styles.bubbleTextMine]}>{item.text}</Text>
+          <Text
+            style={[
+              styles.bubbleText,
+              isMine && styles.bubbleTextMine,
+              { writingDirection: isArabic ? 'rtl' : 'ltr', textAlign: isArabic ? 'right' : 'left' },
+            ]}
+          >
+            {item.text}
+          </Text>
         </View>
         {showTime && (
           <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
@@ -56,6 +65,7 @@ function MessageBubble({ item, isMine, showTime, showAvatar, recipientInitial }:
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function MessageScreen() {
+  const insets = useSafeAreaInsets()
   const { user }     = useAuth()
   const navigation   = useNavigation<any>()
   const route        = useRoute<any>()
@@ -69,6 +79,14 @@ export default function MessageScreen() {
   const [sending, setSending]       = useState(false)
   const flatListRef                 = useRef<FlatList>(null)
   const inputRef                    = useRef<TextInput>(null)
+
+  const scrollToBottom = useCallback((animated: boolean) => {
+    requestAnimationFrame(() => {
+      try {
+        flatListRef.current?.scrollToEnd({ animated })
+      } catch { /* noop */ }
+    })
+  }, [])
 
   // ── Load history ──────────────────────────────────────────────────────────
   const fetchMessages = useCallback(async () => {
@@ -88,19 +106,24 @@ export default function MessageScreen() {
     const handler = (msg: Message) => {
       if (msg.senderId === recipientId) {
         setMessages(prev => [...prev, msg])
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80)
+        scrollToBottom(true)
       }
     }
     socket.on('newMessage', handler)
     return () => { socket.off('newMessage', handler) }
-  }, [socket, recipientId])
+  }, [socket, recipientId, scrollToBottom])
 
-  // ── Auto-scroll ───────────────────────────────────────────────────────────
+  // ── Auto-scroll when list grows or finishes loading ─────────────────────
   useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 150)
+    if (messages.length > 0) scrollToBottom(false)
+  }, [messages.length, scrollToBottom])
+
+  useEffect(() => {
+    if (!loading && messages.length > 0) {
+      const t = setTimeout(() => scrollToBottom(false), 200)
+      return () => clearTimeout(t)
     }
-  }, [messages.length])
+  }, [loading, messages.length, scrollToBottom])
 
   // ── Send message ──────────────────────────────────────────────────────────
   const handleSend = async () => {
@@ -116,7 +139,7 @@ export default function MessageScreen() {
       createdAt: new Date().toISOString(),
     }
     setMessages(prev => [...prev, optimistic])
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80)
+    scrollToBottom(true)
 
     try {
       const { data } = await sendMessageAPI({ recipientId, text: msgText })
@@ -151,6 +174,7 @@ export default function MessageScreen() {
         showTime={showTime}
         showAvatar={showAvatar}
         recipientInitial={recipientInitial}
+        isArabic={isArabic}
       />
     )
   }
@@ -162,35 +186,46 @@ export default function MessageScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Text style={styles.backArrow}>←</Text>
+        {/* ── Header (safe area + RTL) ───────────────────────────────────── */}
+        <View
+          style={[
+            styles.header,
+            {
+              flexDirection: isArabic ? 'row-reverse' : 'row',
+              paddingTop: screenHeaderPaddingTop(insets.top),
+              paddingBottom: spacing.sm,
+            },
+          ]}
+        >
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backBtn, isArabic && styles.backBtnRtl]}>
+            <Text style={styles.backArrow}>{isArabic ? '→' : '←'}</Text>
           </TouchableOpacity>
 
           <View style={styles.headerAvatar}>
             <Text style={styles.headerAvatarText}>{recipientInitial}</Text>
           </View>
 
-          <View style={{ flex: 1, marginLeft: spacing.sm }}>
-            <Text style={styles.headerName} numberOfLines={1}>{recipientName || 'Chat'}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <View
+            style={[
+              styles.headerTitleBlock,
+              isArabic ? { marginRight: spacing.sm, marginLeft: 0 } : { marginLeft: spacing.sm, marginRight: 0 },
+            ]}
+          >
+            <Text style={[styles.headerName, { textAlign: isArabic ? 'right' : 'left' }]} numberOfLines={1}>
+              {recipientName || 'Chat'}
+            </Text>
+            <View style={{ flexDirection: isArabic ? 'row-reverse' : 'row', alignItems: 'center', gap: 4 }}>
               <View style={styles.onlineDot} />
-              <Text style={styles.headerStatus}>
-                {recipientRole ? `${recipientRole} · ` : ''}Online
+              <Text style={[styles.headerStatus, { textAlign: isArabic ? 'right' : 'left' }]}>
+                {recipientRole ? `${recipientRole} · ` : ''}
+                {isArabic ? 'متصل' : 'Online'}
               </Text>
             </View>
           </View>
 
-          {/* Right icons */}
-          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-            <TouchableOpacity style={styles.iconBtn}>
-              <Text style={{ fontSize: 18 }}>📞</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn}>
-              <Text style={{ fontSize: 18 }}>⋮</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.iconBtn}>
+            <Text style={{ fontSize: 18 }}>⋮</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Messages ────────────────────────────────────────────────────── */}
@@ -224,7 +259,7 @@ export default function MessageScreen() {
         )}
 
         {/* ── Input Bar ───────────────────────────────────────────────────── */}
-        <View style={styles.inputBar}>
+        <View style={[styles.inputBar, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
           {/* AR/EN mini toggle */}
           <TouchableOpacity style={styles.langMini} onPress={toggleLang}>
             <Text style={styles.langMiniText}>{lang.toUpperCase()}</Text>
@@ -274,12 +309,14 @@ export default function MessageScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe:      { flex: 1, backgroundColor: colors.cardDark, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0 },
+  safe:      { flex: 1, backgroundColor: colors.cardDark },
   container: { flex: 1, backgroundColor: colors.bg },
 
-  // Header
-  header:          { flexDirection: 'row', alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 44 : 12, paddingBottom: 14, paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
+  // Header — paddingTop from safe area (screenHeaderPaddingTop)
+  header:          { alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
   backBtn:         { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
+  backBtnRtl:      { marginRight: 0, marginLeft: 4 },
+  headerTitleBlock:{ flex: 1, minWidth: 0 },
   backArrow:       { color: colors.text, fontSize: font.xl, fontWeight: '300', lineHeight: 24 },
   headerAvatar:    { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.primary + '60' },
   headerAvatarText:{ color: 'white', fontWeight: '800', fontSize: font.base },

@@ -3,11 +3,12 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Image,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useLang } from '../../context/LanguageContext'
 import { updateProfileAPI, aiExtractSkillsAPI } from '../../api'
-import { colors, spacing, radius, font } from '../../theme'
+import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 import ProjectCategoryPicker from '../../components/ProjectCategoryPicker'
 
 const SKILLS_OPTIONS = [
@@ -23,6 +24,7 @@ const roleColor: Record<string, string> = {
 }
 
 export default function ProfileScreen() {
+  const insets = useSafeAreaInsets()
   const { user, updateUser, logout } = useAuth()
   const navigation = useNavigation<any>()
   const [editing, setEditing]         = useState(false)
@@ -110,7 +112,7 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: screenHeaderPaddingTop(insets.top), paddingBottom: spacing.sm }]}>
         <Text style={[styles.headerTitle, { textAlign: dir }]}>{tr.myProfile}</Text>
         <TouchableOpacity onPress={() => editing ? handleSave() : setEditing(true)} disabled={saving}>
           {saving
@@ -343,7 +345,7 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container:   { flex: 1, backgroundColor: colors.bg },
-  header:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 56, paddingBottom: spacing.md, paddingHorizontal: spacing.md, backgroundColor: colors.cardDark },
+  header:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark },
   headerTitle: { color: colors.text, fontSize: font.xl, fontWeight: '800' },
   editBtn:     { color: colors.primary, fontWeight: '700', fontSize: font.base },
 
