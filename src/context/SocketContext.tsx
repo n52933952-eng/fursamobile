@@ -20,6 +20,7 @@ type SocketContextType = {
   unreadNotifications: number
   unreadMessages: number
   markNotificationsRead: () => void
+  markOneNotificationRead: (id: string) => void
   markMessagesRead: () => void
   addNotification: (n: AppNotification) => void
 }
@@ -30,6 +31,7 @@ const SocketContext = createContext<SocketContextType>({
   unreadNotifications: 0,
   unreadMessages:      0,
   markNotificationsRead: () => {},
+  markOneNotificationRead: () => {},
   markMessagesRead:      () => {},
   addNotification:       () => {},
 })
@@ -151,6 +153,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     import('../api').then(({ markReadAPI }) => markReadAPI().catch(() => {}))
   }
 
+  const markOneNotificationRead = (id: string) => {
+    const sid = String(id)
+    setNotifications(prev =>
+      prev.map(n => (String(n._id) === sid ? { ...n, read: true } : n)),
+    )
+  }
+
   const markMessagesRead = () => setUnreadMessages(0)
 
   const addNotification = (n: AppNotification) =>
@@ -163,6 +172,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       unreadNotifications,
       unreadMessages,
       markNotificationsRead,
+      markOneNotificationRead,
       markMessagesRead,
       addNotification,
     }}>

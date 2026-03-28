@@ -51,11 +51,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "516464094484-qnt7vk9or2p6d7laoiafg2v5kseqmpvn.apps.googleusercontent.com",
+          "client_id": "516464094484-vlk46vgrn50232re35da6uh96sdq5lbe.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.fursa",
-            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+            "certificate_hash": "e12ca2f92e433b825482178daf2d2986eccbf7b1"
           }
         },
         {

@@ -208,6 +208,7 @@ function EmptyState({ tab, isArabic }: { tab: string; isArabic: boolean }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function MyBidsScreen() {
+  const insets       = useSafeAreaInsets()
   const { socket }   = useSocket()
   const { isArabic, lang, toggleLang } = useLang()
   const navigation   = useNavigation<any>()

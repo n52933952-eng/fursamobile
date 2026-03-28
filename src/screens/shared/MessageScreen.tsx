@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute } from '@react-navigation/native'
@@ -22,6 +23,11 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-US', {
     hour: '2-digit', minute: '2-digit', hour12: true,
   })
+}
+
+/** LTR isolate — stops Arabic RTL layout from reordering Latin usernames into stray fragments */
+function ltrIsolate(s: string) {
+  return `\u2066${s}\u2069`
 }
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
@@ -66,6 +72,7 @@ function MessageBubble({ item, isMine, showTime, showAvatar, recipientInitial, i
 
 export default function MessageScreen() {
   const insets = useSafeAreaInsets()
+  const { width: windowWidth } = useWindowDimensions()
   const { user }     = useAuth()
   const navigation   = useNavigation<any>()
   const route        = useRoute<any>()
@@ -158,8 +165,12 @@ export default function MessageScreen() {
   }
 
   const recipientInitial = (recipientName || '?')[0]?.toUpperCase()
+  const displayName = recipientName || 'Chat'
+  const nameForBidi = isArabic ? ltrIsolate(displayName) : displayName
+  const rolePrefix = recipientRole ? ltrIsolate(`${recipientRole} · `) : ''
   const placeholder = isArabic ? 'اكتب رسالة...' : 'Type a message...'
   const textDir = isArabic ? 'right' as const : 'left' as const
+  const headerNameSize = windowWidth < 360 ? font.sm : font.base
 
   const renderItem = ({ item, index }: { item: Message; index: number }) => {
     const isMine = item.senderId === user?._id
@@ -194,36 +205,71 @@ export default function MessageScreen() {
               flexDirection: isArabic ? 'row-reverse' : 'row',
               paddingTop: screenHeaderPaddingTop(insets.top),
               paddingBottom: spacing.sm,
+              gap: 8,
             },
           ]}
         >
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backBtn, isArabic && styles.backBtnRtl]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBackBtn}>
             <Text style={styles.backArrow}>{isArabic ? '→' : '←'}</Text>
           </TouchableOpacity>
 
-          <View style={styles.headerAvatar}>
-            <Text style={styles.headerAvatarText}>{recipientInitial}</Text>
-          </View>
-
+          {/* Avatar + titles stay one cluster so RTL cannot split Latin names away from the avatar */}
           <View
             style={[
-              styles.headerTitleBlock,
-              isArabic ? { marginRight: spacing.sm, marginLeft: 0 } : { marginLeft: spacing.sm, marginRight: 0 },
+              styles.headerCenterCluster,
+              { flexDirection: isArabic ? 'row-reverse' : 'row' },
             ]}
           >
-            <Text style={[styles.headerName, { textAlign: isArabic ? 'right' : 'left' }]} numberOfLines={1}>
-              {recipientName || 'Chat'}
-            </Text>
-            <View style={{ flexDirection: isArabic ? 'row-reverse' : 'row', alignItems: 'center', gap: 4 }}>
-              <View style={styles.onlineDot} />
-              <Text style={[styles.headerStatus, { textAlign: isArabic ? 'right' : 'left' }]}>
-                {recipientRole ? `${recipientRole} · ` : ''}
-                {isArabic ? 'متصل' : 'Online'}
+            <View style={[styles.headerAvatar, windowWidth < 360 && styles.headerAvatarCompact]}>
+              <Text style={[styles.headerAvatarText, windowWidth < 360 && styles.headerAvatarTextCompact]}>
+                {recipientInitial}
               </Text>
+            </View>
+            <View style={styles.headerTitleBlock}>
+              <Text
+                style={[
+                  styles.headerName,
+                  {
+                    textAlign: isArabic ? 'right' : 'left',
+                    writingDirection: 'ltr',
+                    fontSize: headerNameSize,
+                  },
+                ]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {nameForBidi}
+              </Text>
+              <View
+                style={[
+                  styles.headerStatusRow,
+                  { flexDirection: isArabic ? 'row-reverse' : 'row' },
+                ]}
+              >
+                <View style={styles.onlineDot} />
+                <View
+                  style={[
+                    styles.headerStatusTexts,
+                    { flexDirection: isArabic ? 'row-reverse' : 'row' },
+                  ]}
+                >
+                  {recipientRole ? (
+                    <Text style={styles.headerStatusLtr} numberOfLines={1} ellipsizeMode="tail">
+                      {rolePrefix}
+                    </Text>
+                  ) : null}
+                  <Text
+                    style={[styles.headerStatus, isArabic ? styles.headerStatusAr : styles.headerStatusLtr]}
+                    numberOfLines={1}
+                  >
+                    {isArabic ? 'متصل' : 'Online'}
+                  </Text>
+                </View>
+              </View>
             </View>
           </View>
 
-          <TouchableOpacity style={styles.iconBtn}>
+          <TouchableOpacity style={styles.headerMenuBtn}>
             <Text style={{ fontSize: 18 }}>⋮</Text>
           </TouchableOpacity>
         </View>
@@ -313,17 +359,23 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
   // Header — paddingTop from safe area (screenHeaderPaddingTop)
-  header:          { alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
-  backBtn:         { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
-  backBtnRtl:      { marginRight: 0, marginLeft: 4 },
-  headerTitleBlock:{ flex: 1, minWidth: 0 },
-  backArrow:       { color: colors.text, fontSize: font.xl, fontWeight: '300', lineHeight: 24 },
-  headerAvatar:    { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.primary + '60' },
-  headerAvatarText:{ color: 'white', fontWeight: '800', fontSize: font.base },
-  headerName:      { color: colors.text, fontWeight: '700', fontSize: font.base },
-  onlineDot:       { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
-  headerStatus:    { color: colors.textMuted, fontSize: 11 },
-  iconBtn:         { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: radius.full, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  header:               { alignItems: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.cardDark, borderBottomWidth: 1, borderBottomColor: colors.border },
+  headerBackBtn:        { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  headerMenuBtn:        { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: radius.full, flexShrink: 0, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  headerCenterCluster:  { flex: 1, minWidth: 0, alignItems: 'center', gap: spacing.sm },
+  headerTitleBlock:     { flex: 1, minWidth: 0, overflow: 'hidden', justifyContent: 'center' },
+  backArrow:            { color: colors.text, fontSize: font.xl, fontWeight: '300', lineHeight: 24 },
+  headerAvatar:         { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.primary + '60', flexShrink: 0 },
+  headerAvatarCompact:  { width: 38, height: 38, borderRadius: 19 },
+  headerAvatarText:     { color: 'white', fontWeight: '800', fontSize: font.base },
+  headerAvatarTextCompact: { fontSize: font.sm },
+  headerName:           { color: colors.text, fontWeight: '700', fontSize: font.base },
+  onlineDot:            { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success, flexShrink: 0 },
+  headerStatusRow:      { alignItems: 'center', gap: 6, marginTop: 2, minWidth: 0 },
+  headerStatusTexts:    { flex: 1, minWidth: 0, alignItems: 'center', gap: 4 },
+  headerStatus:         { color: colors.textMuted, fontSize: 11 },
+  headerStatusLtr:      { color: colors.textMuted, fontSize: 11, writingDirection: 'ltr' },
+  headerStatusAr:       { color: colors.textMuted, fontSize: 11, writingDirection: 'rtl' },
 
   loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   msgList:    { paddingHorizontal: spacing.sm, paddingVertical: spacing.md, paddingBottom: 12 },

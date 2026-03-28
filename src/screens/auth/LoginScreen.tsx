@@ -5,6 +5,7 @@ import {
 } from 'react-native'
 import { colors, spacing, radius, font } from '../../theme'
 import { loginAPI } from '../../api'
+import { getFriendlyApiError } from '../../utils/networkErrors'
 import { useAuth } from '../../context/AuthContext'
 import { useLang } from '../../context/LanguageContext'
 
@@ -30,7 +31,7 @@ export default function LoginScreen({ navigation }: any) {
     } catch (err: any) {
       Alert.alert(
         isArabic ? 'فشل تسجيل الدخول' : 'Login Failed',
-        err.response?.data?.error || (isArabic ? 'بيانات غير صحيحة' : 'Invalid credentials')
+        getFriendlyApiError(err, isArabic, isArabic ? 'بيانات غير صحيحة' : 'Invalid credentials')
       )
     } finally {
       setLoading(false)

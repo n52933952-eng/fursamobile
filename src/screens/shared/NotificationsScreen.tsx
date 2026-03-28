@@ -6,7 +6,7 @@ import {
 import { useNavigation } from '@react-navigation/native'
 import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
-import { getNotificationsAPI, markReadAPI } from '../../api'
+import { getNotificationsAPI, markReadAPI, markOneReadAPI } from '../../api'
 import { colors, spacing, radius, font } from '../../theme'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +25,10 @@ const typeConfig: Record<NotifType | string, {
 }
 
 // ─── Time formatter (bilingual) ───────────────────────────────────────────────
+
+function isMongoObjectId(id: string) {
+  return /^[a-fA-F0-9]{24}$/.test(String(id))
+}
 
 function timeAgo(iso: string, isArabic: boolean) {
   const diff = Date.now() - new Date(iso).getTime()
@@ -117,7 +121,7 @@ const FILTERS = [
 
 export default function NotificationsScreen() {
   const navigation = useNavigation<any>()
-  const { notifications: liveNotifs, markNotificationsRead } = useSocket()
+  const { notifications: liveNotifs, markNotificationsRead, markOneNotificationRead } = useSocket()
   const { isArabic, lang, toggleLang } = useLang()
 
   const [dbNotifs, setDbNotifs]         = useState<any[]>([])
@@ -166,7 +170,12 @@ export default function NotificationsScreen() {
   }
 
   const handleMarkOne = (id: string) => {
-    setDbNotifs(prev => prev.map(n => n._id === id ? { ...n, read: true } : n))
+    const sid = String(id)
+    markOneNotificationRead(sid)
+    setDbNotifs(prev => prev.map(n => (String(n._id) === sid ? { ...n, read: true } : n)))
+    if (isMongoObjectId(sid)) {
+      markOneReadAPI(sid).catch(() => {})
+    }
   }
 
   if (loading) return (

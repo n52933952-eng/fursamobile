@@ -5,6 +5,7 @@ import {
 } from 'react-native'
 import { colors, spacing, radius, font } from '../../theme'
 import { registerAPI } from '../../api'
+import { getFriendlyApiError } from '../../utils/networkErrors'
 import { useLang } from '../../context/LanguageContext'
 import ProjectCategoryPicker from '../../components/ProjectCategoryPicker'
 
@@ -51,7 +52,7 @@ export default function RegisterScreen({ navigation }: any) {
     } catch (err: any) {
       Alert.alert(
         isArabic ? 'فشل التسجيل' : 'Registration Failed',
-        err.response?.data?.error || (isArabic ? 'حدث خطأ ما' : 'Something went wrong')
+        getFriendlyApiError(err, isArabic)
       )
     } finally {
       setLoading(false)

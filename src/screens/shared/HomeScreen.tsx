@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch,
   TextInput, RefreshControl, Modal, Alert, ActivityIndicator, Animated,
-  Keyboard,
+  Keyboard, useWindowDimensions,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -45,19 +45,20 @@ function greeting(isArabic: boolean) {
 
 // ─── AR/EN Language Toggle ────────────────────────────────────────────────────
 
-function LangToggle() {
-  const { lang, toggleLang, isArabic } = useLang()
+function LangToggle({ compact }: { compact?: boolean }) {
+  const { toggleLang, isArabic } = useLang()
+  const sw = compact ? 0.72 : 0.85
   return (
-    <View style={styles.langToggle}>
-      <Text style={[styles.langLabel, !isArabic && styles.langLabelActive]}>EN</Text>
+    <View style={[styles.langToggle, compact && styles.langToggleCompact]}>
+      <Text style={[styles.langLabel, !isArabic && styles.langLabelActive, compact && styles.langLabelCompact]}>EN</Text>
       <Switch
         value={isArabic}
         onValueChange={toggleLang}
         trackColor={{ false: colors.border, true: colors.primary + '80' }}
         thumbColor={isArabic ? colors.primary : colors.textMuted}
-        style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+        style={{ transform: [{ scaleX: sw }, { scaleY: sw }] }}
       />
-      <Text style={[styles.langLabel, isArabic && styles.langLabelActive]}>AR</Text>
+      <Text style={[styles.langLabel, isArabic && styles.langLabelActive, compact && styles.langLabelCompact]}>AR</Text>
     </View>
   )
 }
@@ -292,6 +293,8 @@ function BidModal({ project, visible, onClose, onSubmit, isArabic, tr }: {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets()
+  const { width: windowWidth } = useWindowDimensions()
+  const narrowHeader = windowWidth < 380
   const { user }    = useAuth()
   const { socket, unreadNotifications } = useSocket()
   const { tr, isArabic, lang } = useLang()
@@ -430,58 +433,52 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
 
-      {/* ── Header: absolute slots (greeting vs actions) — stable height for scroll content ── */}
+      {/* ── Header: flex row — text column shrinks + ellipsizes; actions never overlap ── */}
       <View style={[styles.headerAbsolute, { height: headerTotalHeight }]} pointerEvents="box-none">
         <Animated.View
           style={[
-            styles.headerGreetingAbs,
+            styles.headerMainRow,
             {
-              top: headerPadTop,
+              paddingTop: headerPadTop,
+              paddingBottom: spacing.sm,
+              paddingHorizontal: spacing.md,
               opacity: fadeAnim,
-              ...(isArabic
-                ? { right: spacing.md, left: undefined }
-                : { left: spacing.md, right: undefined }),
-            },
-          ]}
-        >
-          <Text style={[styles.greetingText, { textAlign: dir }]} numberOfLines={2}>
-            {greeting(isArabic)} 👋
-          </Text>
-          <Text style={[styles.username, { textAlign: dir }]} numberOfLines={1} ellipsizeMode="tail">
-            {user?.username} {isClient
-              ? (isArabic ? '(عميل)' : '(Client)')
-              : (isArabic ? '(مستقل)' : '(Freelancer)')
-            }
-          </Text>
-        </Animated.View>
-
-        <View
-          style={[
-            styles.headerActionsAbs,
-            {
-              top: headerPadTop,
               flexDirection: isArabic ? 'row-reverse' : 'row',
-              ...(isArabic
-                ? { left: spacing.md, right: undefined }
-                : { right: spacing.md, left: undefined }),
             },
           ]}
         >
-          <LangToggle />
-          <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('NotificationsScreen')}>
-            <Text style={{ fontSize: 20 }}>🔔</Text>
-            {unreadNotifications > 0 && (
-              <View style={styles.bellBadge}>
-                <Text style={styles.bellBadgeText}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          <View style={styles.avatarCircle}>
-            <Text style={{ color: 'white', fontWeight: '800', fontSize: font.base }}>
-              {user?.username?.[0]?.toUpperCase()}
+          <View style={styles.headerTextCol}>
+            <Text
+              style={[styles.greetingText, { textAlign: dir }]}
+              numberOfLines={narrowHeader ? 1 : 2}
+              ellipsizeMode="tail"
+            >
+              {greeting(isArabic)} 👋
+            </Text>
+            <Text style={[styles.username, { textAlign: dir }]} numberOfLines={1} ellipsizeMode="tail">
+              {user?.username} {isClient
+                ? (isArabic ? '(عميل)' : '(Client)')
+                : (isArabic ? '(مستقل)' : '(Freelancer)')
+              }
             </Text>
           </View>
-        </View>
+          <View style={[styles.headerActionsStrip, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
+            <LangToggle compact={narrowHeader} />
+            <TouchableOpacity style={[styles.bellBtn, narrowHeader && styles.bellBtnCompact]} onPress={() => navigation.navigate('NotificationsScreen')}>
+              <Text style={{ fontSize: narrowHeader ? 18 : 20 }}>🔔</Text>
+              {unreadNotifications > 0 && (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <View style={[styles.avatarCircle, narrowHeader && styles.avatarCircleCompact]}>
+              <Text style={{ color: 'white', fontWeight: '800', fontSize: narrowHeader ? font.sm : font.base }}>
+                {user?.username?.[0]?.toUpperCase()}
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
       </View>
 
       <ScrollView
@@ -832,27 +829,37 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  headerGreetingAbs: {
-    position: 'absolute',
-    width: '46%',
-    maxWidth: 210,
+  headerMainRow: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 64,
   },
-  headerActionsAbs: {
-    position: 'absolute',
+  headerTextCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  headerActionsStrip: {
+    flexShrink: 0,
     alignItems: 'center',
     gap: 4,
   },
   greetingText: { color: colors.text, fontSize: font.lg, fontWeight: '800', lineHeight: 22 },
   username:     { color: colors.textMuted, fontSize: font.sm, marginTop: 1 },
   avatarCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  avatarCircleCompact: { width: 34, height: 34, borderRadius: 17 },
 
   // Lang toggle
   langToggle:      { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: colors.border, gap: 2 },
+  langToggleCompact: { paddingHorizontal: 5, paddingVertical: 2, gap: 0 },
   langLabel:       { color: colors.textDim, fontSize: 11, fontWeight: '700' },
+  langLabelCompact:{ fontSize: 9 },
   langLabelActive: { color: colors.primary },
 
   // Bell
   bellBtn:      { position: 'relative', width: 38, height: 38, borderRadius: radius.full, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  bellBtnCompact: { width: 34, height: 34, borderRadius: 17 },
   bellBadge:    { position: 'absolute', top: -2, right: -2, backgroundColor: colors.error, borderRadius: radius.full, minWidth: 17, height: 17, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
   bellBadgeText:{ color: '#fff', fontSize: 9, fontWeight: '800' },
 
