@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput,
+  RefreshControl, ActivityIndicator, TextInput, Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
-import { getConversationsAPI, searchUsersAPI } from '../../api'
+import { getConversationsAPI, searchUsersAPI, getSupportAdminAPI } from '../../api'
 import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -133,10 +133,33 @@ export default function ChatScreen() {
   // Real-time: refresh conversation list on new message
   useEffect(() => {
     if (!socket) return
-    const handler = () => { fetchConversations() }
-    socket.on('newMessage', handler)
-    return () => { socket.off('newMessage', handler) }
+    const onNew = () => { fetchConversations() }
+    const onDeleted = () => { fetchConversations() }
+    socket.on('newMessage', onNew)
+    socket.on('messageDeleted', onDeleted)
+    return () => {
+      socket.off('newMessage', onNew)
+      socket.off('messageDeleted', onDeleted)
+    }
   }, [socket, fetchConversations])
+
+  const openSupportChat = async () => {
+    try {
+      const { data } = await getSupportAdminAPI()
+      const admin = data as { _id: string; username?: string; role?: string }
+      if (!admin?._id) {
+        Alert.alert(isArabic ? 'تنبيه' : 'Notice', tr.supportUnavailable)
+        return
+      }
+      navigation.navigate('MessageScreen', {
+        recipientId:   admin._id,
+        recipientName: admin.username || 'Support',
+        recipientRole: admin.role || 'admin',
+      })
+    } catch {
+      Alert.alert(isArabic ? 'خطأ' : 'Error', tr.supportUnavailable)
+    }
+  }
 
   // ── Search logic ──────────────────────────────────────────────────────────
   // Debounce user search — only calls backend after 400ms of no typing
@@ -216,6 +239,21 @@ export default function ChatScreen() {
           )}
         </View>
       </View>
+
+      {user?.role !== 'admin' && (
+        <TouchableOpacity
+          style={[styles.supportBanner, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}
+          onPress={openSupportChat}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.supportBannerIcon}>💬</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.supportBannerTitle, { textAlign: dir }]}>{tr.contactSupport}</Text>
+            <Text style={[styles.supportBannerSub, { textAlign: dir }]}>{tr.contactSupportSub}</Text>
+          </View>
+          <Text style={styles.supportBannerChev}>{isArabic ? '←' : '→'}</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Search box */}
       <View style={[styles.searchRow, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
@@ -327,6 +365,12 @@ const styles = StyleSheet.create({
   header:      { paddingHorizontal: spacing.md, backgroundColor: colors.cardDark },
   headerTitle: { color: colors.text, fontSize: font.xl, fontWeight: '800' },
   headerSub:   { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
+
+  supportBanner:    { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginHorizontal: spacing.md, marginBottom: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 12, backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.primary + '55' },
+  supportBannerIcon:{ fontSize: 22 },
+  supportBannerTitle:{ color: colors.text, fontWeight: '800', fontSize: font.sm },
+  supportBannerSub: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  supportBannerChev:{ color: colors.primary, fontSize: font.lg, fontWeight: '700' },
 
   searchRow:   { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, margin: spacing.md, borderRadius: radius.lg, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border },
   searchInput: { flex: 1, color: colors.text, fontSize: font.base, paddingVertical: 12 },

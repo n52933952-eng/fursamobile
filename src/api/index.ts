@@ -1,10 +1,20 @@
 import axios from 'axios'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { emitOrphanSession } from './authSession'
-
+//
 // For Android emulator use 10.0.2.2, for real device use your PC's local IP
 // e.g. http://192.168.1.X:5000
 export const BASE_URL = 'https://fursa-uvx1.onrender.com'
+
+/** Full URL for static uploads or absolute profilePic from the API */
+export function resolveServerAssetUrl(path?: string | null): string | null {
+  if (path == null || !String(path).trim()) return null
+  const p = String(path).trim()
+  if (/^https?:\/\//i.test(p)) return p
+  const base = BASE_URL.replace(/\/$/, '')
+  const rel = p.startsWith('/') ? p : `/${p}`
+  return `${base}${rel}`
+}
 
 /** Render cold start is often ~1–3 min (varies). 3 min covers most wakes without waiting forever on a real failure. */
 export const API_TIMEOUT_MS = 180_000 // 3 minutes
@@ -66,6 +76,11 @@ function getErrorMessage(err: any): string {
 
 // Attach token to authenticated requests only (don't override explicit Bearer from callers e.g. FCM right after login)
 api.interceptors.request.use(async (config) => {
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    const h = config.headers as any
+    if (h?.delete) h.delete('Content-Type')
+    else if (h && typeof h === 'object') delete h['Content-Type']
+  }
   if (!isPublicAuthPath(config.url)) {
     if (!getExistingAuthorization(config)) {
       const token = await AsyncStorage.getItem('token')
@@ -136,6 +151,37 @@ export const acceptProposalAPI = (id: string)        => api.put(`/proposal/accep
 // Profile
 export const getProfileAPI      = (id: string)       => api.get(`/user/${id}`)
 export const updateProfileAPI   = (data: object)     => api.put('/user/update', data)
+
+/**
+ * Avatar upload uses `fetch` (not axios): RN multipart + axios default JSON Content-Type
+ * often breaks uploads; fetch sets the multipart boundary correctly.
+ */
+export async function uploadProfileAvatarAPI(
+  formData: FormData,
+): Promise<{ data: Record<string, unknown> }> {
+  const token = (await AsyncStorage.getItem('token')) || ''
+  const url = `${BASE_URL.replace(/\/$/, '')}/api/user/avatar`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+  const text = await res.text()
+  let body: Record<string, unknown> = {}
+  try {
+    if (text) body = JSON.parse(text) as Record<string, unknown>
+  } catch {
+    body = { error: text?.slice(0, 200) || `Upload failed (HTTP ${res.status})` }
+  }
+  if (!res.ok) {
+    const msg =
+      typeof body.error === 'string' ? body.error : `Upload failed (HTTP ${res.status})`
+    const err = new Error(msg) as Error & { response?: { status: number; data: unknown } }
+    err.response = { status: res.status, data: body }
+    throw err
+  }
+  return { data: body }
+}
 export const searchUsersAPI       = (query: string)    => api.get('/user/search-chat', { params: { query } })
 export const searchFreelancersAPI = (params: object)   => api.get('/user/search', { params })
 
@@ -143,6 +189,10 @@ export const searchFreelancersAPI = (params: object)   => api.get('/user/search'
 export const getConversationsAPI = ()                => api.get('/message/conversations')
 export const getMessagesAPI      = (id: string)      => api.get(`/message/${id}`)
 export const sendMessageAPI      = (data: object)    => api.post('/message', data)
+export const deleteMessageAPI    = (messageId: string) => api.delete(`/message/by-id/${messageId}`)
+
+/** Logged-in client/freelancer: platform admin for support chat */
+export const getSupportAdminAPI  = ()                => api.get('/user/support-admin')
 
 // Wallet
 export const getWalletAPI        = ()                => api.get('/wallet')

@@ -17,6 +17,7 @@ import { useLang } from '../../context/LanguageContext'
 import { aiChatAPI, type AiChatMessage } from '../../api'
 import { colors, spacing, radius, font } from '../../theme'
 
+//
 type Row = AiChatMessage & { id: string }
 
 let idSeq = 0

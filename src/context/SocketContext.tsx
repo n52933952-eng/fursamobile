@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react'
+import { AppState, type AppStateStatus } from 'react-native'
 import io, { Socket } from 'socket.io-client'
 import { useAuth } from './AuthContext'
 import { BASE_URL, getNotificationsAPI } from '../api'
@@ -14,11 +15,16 @@ export type AppNotification = {
   createdAt: string
 }
 
+/** Same shape as server `getOnlineUsers` payload */
+export type OnlineUserEntry = { userId: string; onlineAt: number }
+
 type SocketContextType = {
   socket: Socket | null
   notifications: AppNotification[]
   unreadNotifications: number
   unreadMessages: number
+  /** User ids currently connected to the socket server (web + mobile) */
+  onlineUsers: OnlineUserEntry[]
   markNotificationsRead: () => void
   markOneNotificationRead: (id: string) => void
   markMessagesRead: () => void
@@ -30,6 +36,7 @@ const SocketContext = createContext<SocketContextType>({
   notifications:       [],
   unreadNotifications: 0,
   unreadMessages:      0,
+  onlineUsers:         [],
   markNotificationsRead: () => {},
   markOneNotificationRead: () => {},
   markMessagesRead:      () => {},
@@ -43,8 +50,10 @@ export const useSocket = () => useContext(SocketContext)
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
   const [socket, setSocket]             = useState<Socket | null>(null)
+  const socketRef                       = useRef<Socket | null>(null)
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadMessages, setUnreadMessages] = useState(0)
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUserEntry[]>([])
 
   const unreadNotifications = notifications.filter(n => !n.read).length
 
@@ -68,6 +77,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     if (!user?._id) {
       // User logged out — disconnect
       setSocket(prev => { prev?.disconnect(); return null })
+      socketRef.current = null
+      setOnlineUsers([])
       return
     }
 
@@ -78,10 +89,20 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       reconnectionDelay: 2000,
     })
 
+    socketRef.current = sock
     setSocket(sock)
 
     sock.on('connect', () => {
       console.log('[Socket] Connected:', sock.id)
+    })
+
+    sock.on('getOnlineUsers', (users: unknown) => {
+      if (!Array.isArray(users)) return
+      const next: OnlineUserEntry[] = users.map((u: any) => ({
+        userId: String(u?.userId ?? ''),
+        onlineAt: typeof u?.onlineAt === 'number' ? u.onlineAt : 0,
+      })).filter(e => e.userId.length > 0)
+      setOnlineUsers(next)
     })
 
     // ── Notification from any backend controller ──────────────────────────
@@ -144,7 +165,33 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       console.log('[Socket] Disconnected:', reason)
     })
 
-    return () => { sock.disconnect() }
+    return () => {
+      sock.off('getOnlineUsers')
+      socketRef.current = null
+      sock.disconnect()
+    }
+  }, [user?._id])
+
+  /**
+   * While in background, many devices keep the WebSocket open, so the server still
+   * lists the user as online. Disconnect explicitly so admin "Online" matches reality.
+   * Reconnect when the app returns to the foreground.
+   */
+  useEffect(() => {
+    if (!user?._id) return
+
+    const onAppState = (next: AppStateStatus) => {
+      const s = socketRef.current
+      if (!s) return
+      if (next === 'active') {
+        if (!s.connected) s.connect()
+      } else if (next === 'background') {
+        s.disconnect()
+      }
+    }
+
+    const sub = AppState.addEventListener('change', onAppState)
+    return () => sub.remove()
   }, [user?._id])
 
   const markNotificationsRead = () => {
@@ -171,6 +218,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       notifications,
       unreadNotifications,
       unreadMessages,
+      onlineUsers,
       markNotificationsRead,
       markOneNotificationRead,
       markMessagesRead,

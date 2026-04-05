@@ -3,11 +3,13 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Image,
 } from 'react-native'
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker'
+import type { Asset } from 'react-native-image-picker'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useLang } from '../../context/LanguageContext'
-import { updateProfileAPI, aiExtractSkillsAPI } from '../../api'
+import { updateProfileAPI, aiExtractSkillsAPI, getSupportAdminAPI, uploadProfileAvatarAPI, resolveServerAssetUrl } from '../../api'
 import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 import ProjectCategoryPicker from '../../components/ProjectCategoryPicker'
 
@@ -27,6 +29,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets()
   const { user, updateUser, logout } = useAuth()
   const navigation = useNavigation<any>()
+  const { tr, isArabic } = useLang()
   const [editing, setEditing]         = useState(false)
   const [saving, setSaving]           = useState(false)
   const [bio, setBio]                 = useState(user?.bio || '')
@@ -37,6 +40,10 @@ export default function ProfileScreen() {
   const [interestedCategories, setInterestedCategories] = useState<string[]>(
     (user as any)?.interestedCategories || []
   )
+  const [avatarUploading, setAvatarUploading] = useState(false)
+
+  const canChangeAvatar = user?.role === 'client' || user?.role === 'freelancer'
+  const avatarUri = resolveServerAssetUrl(user?.profilePic)
 
   useEffect(() => {
     setBio(user?.bio || '')
@@ -53,6 +60,24 @@ export default function ProfileScreen() {
     const s = skillInput.trim()
     if (s && !skills.includes(s)) setSkills(prev => [...prev, s])
     setSkillInput('')
+  }
+
+  const openSupportChat = async () => {
+    try {
+      const { data } = await getSupportAdminAPI()
+      const admin = data as { _id: string; username?: string; role?: string }
+      if (!admin?._id) {
+        Alert.alert(isArabic ? 'تنبيه' : 'Notice', tr.supportUnavailable)
+        return
+      }
+      navigation.navigate('MessageScreen', {
+        recipientId:   admin._id,
+        recipientName: admin.username || 'Support',
+        recipientRole: admin.role || 'admin',
+      })
+    } catch {
+      Alert.alert(isArabic ? 'خطأ' : 'Error', tr.supportUnavailable)
+    }
   }
 
   const handleAiExtractSkills = async () => {
@@ -96,13 +121,66 @@ export default function ProfileScreen() {
     setSaving(false)
   }
 
-  const { tr, isArabic } = useLang()
   const dir = isArabic ? 'right' as const : 'left' as const
 
   const handleLogout = () => {
     Alert.alert(tr.logout, tr.logoutConfirm, [
       { text: tr.cancel, style: 'cancel' },
       { text: tr.logout, style: 'destructive', onPress: () => logout() },
+    ])
+  }
+
+  const uploadPickedAsset = async (asset: Asset) => {
+    if (!asset.uri) return
+    setAvatarUploading(true)
+    try {
+      const form = new FormData()
+      const name = asset.fileName || `avatar_${Date.now()}.jpg`
+      let type = asset.type || 'image/jpeg'
+      if (type === 'image/jpg') type = 'image/jpeg'
+      form.append('avatar', { uri: asset.uri, name, type } as any)
+      const { data } = await uploadProfileAvatarAPI(form)
+      updateUser(data as any)
+      Alert.alert('✅', tr.avatarUpdated)
+    } catch (e: any) {
+      const serverMsg =
+        typeof e?.response?.data?.error === 'string' ? e.response.data.error : ''
+      Alert.alert(
+        isArabic ? 'خطأ' : 'Error',
+        serverMsg || e?.message || tr.avatarUploadFailed,
+      )
+    }
+    setAvatarUploading(false)
+  }
+
+  const pickFromLibrary = () => {
+    launchImageLibrary(
+      { mediaType: 'photo', selectionLimit: 1, maxWidth: 1600, maxHeight: 1600, quality: 0.88 },
+      (res) => {
+        if (res.didCancel || res.errorCode) return
+        const a = res.assets?.[0]
+        if (a) void uploadPickedAsset(a)
+      },
+    )
+  }
+
+  const pickFromCamera = () => {
+    launchCamera(
+      { mediaType: 'photo', cameraType: 'back', maxWidth: 1600, maxHeight: 1600, quality: 0.88 },
+      (res) => {
+        if (res.didCancel || res.errorCode) return
+        const a = res.assets?.[0]
+        if (a) void uploadPickedAsset(a)
+      },
+    )
+  }
+
+  const onAvatarPress = () => {
+    if (!canChangeAvatar || avatarUploading) return
+    Alert.alert(tr.changeProfilePhoto, tr.changeProfilePhotoHint, [
+      { text: tr.chooseFromGallery, onPress: pickFromLibrary },
+      { text: tr.takePhoto, onPress: pickFromCamera },
+      { text: tr.cancel, style: 'cancel' },
     ])
   }
 
@@ -125,9 +203,38 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Avatar & Info */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          {canChangeAvatar ? (
+            <TouchableOpacity
+              style={styles.avatar}
+              onPress={onAvatarPress}
+              activeOpacity={0.85}
+              disabled={avatarUploading}
+              accessibilityRole="button"
+              accessibilityLabel={tr.tapToChangePhoto}
+            >
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImage} resizeMode="cover" />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
+              {avatarUploading && (
+                <View style={styles.avatarLoading}>
+                  <ActivityIndicator color="#fff" />
+                </View>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.avatar}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImage} resizeMode="cover" />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
+            </View>
+          )}
+          {canChangeAvatar && (
+            <Text style={[styles.avatarHint, { textAlign: 'center' }]}>{tr.tapToChangePhoto}</Text>
+          )}
           <Text style={styles.username}>{user?.username}</Text>
           <Text style={styles.email}>{user?.email}</Text>
           {/* Debug (remove later): helps verify which Mongo _id the app is using */}
@@ -195,6 +302,18 @@ export default function ProfileScreen() {
             {(user as any)?.totalReviews ?? 0} {isArabic ? 'تقييم' : 'reviews'} →
           </Text>
         </TouchableOpacity>
+
+        {user?.role !== 'admin' && (
+          <TouchableOpacity
+            style={styles.supportRow}
+            onPress={openSupportChat}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.supportRowTitle}>💬 {tr.contactSupport}</Text>
+            <Text style={[styles.supportRowSub, { textAlign: dir }]}>{tr.contactSupportSub}</Text>
+            <Text style={[styles.supportRowGo, { textAlign: isArabic ? 'left' : 'right' }]}>{tr.messageSupportTeam} →</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Bio */}
         <View style={styles.section}>
@@ -350,7 +469,10 @@ const styles = StyleSheet.create({
   editBtn:     { color: colors.primary, fontWeight: '700', fontSize: font.base },
 
   avatarSection:{ alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.lg, backgroundColor: colors.cardDark },
-  avatar:       { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
+  avatar:       { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs, overflow: 'hidden' },
+  avatarImage:  { width: '100%', height: '100%' },
+  avatarLoading:{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  avatarHint:   { color: colors.textMuted, fontSize: font.sm, marginBottom: spacing.sm, paddingHorizontal: spacing.md },
   avatarText:   { color: 'white', fontSize: font.xxl, fontWeight: '900' },
   username:     { color: colors.text, fontSize: font.xl, fontWeight: '800' },
   email:        { color: colors.textMuted, fontSize: font.sm, marginTop: 2, marginBottom: spacing.sm },
@@ -366,6 +488,11 @@ const styles = StyleSheet.create({
   reviewsBtn:      { marginHorizontal: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   reviewsBtnText:  { color: colors.text, fontWeight: '700', fontSize: font.base },
   reviewsBtnCount: { color: colors.primary, fontSize: font.sm, fontWeight: '600' },
+
+  supportRow:    { marginHorizontal: spacing.md, marginBottom: spacing.md, backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: 14, borderWidth: 1, borderColor: colors.primary + '44' },
+  supportRowTitle:{ color: colors.text, fontWeight: '800', fontSize: font.base, marginBottom: 4 },
+  supportRowSub:  { color: colors.textMuted, fontSize: font.sm, marginBottom: 8 },
+  supportRowGo:   { color: colors.primary, fontSize: font.sm, fontWeight: '700' },
 
   section:      { paddingHorizontal: spacing.md, marginBottom: spacing.md },
   sectionTitle: { color: colors.text, fontSize: font.base, fontWeight: '700', marginBottom: spacing.sm },

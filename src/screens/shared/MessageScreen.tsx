@@ -2,18 +2,19 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
-  useWindowDimensions,
+  useWindowDimensions, Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
 import { useLang } from '../../context/LanguageContext'
-import { getMessagesAPI, sendMessageAPI } from '../../api'
+import { getMessagesAPI, sendMessageAPI, deleteMessageAPI } from '../../api'
 import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 
 type Message = {
   _id?: string
+  conversationId?: string
   senderId: string
   text: string
   createdAt: string
@@ -32,10 +33,32 @@ function ltrIsolate(s: string) {
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ item, isMine, showTime, showAvatar, recipientInitial, isArabic }: {
+function MessageBubble({ item, isMine, showTime, showAvatar, recipientInitial, isArabic, canDelete, onDeletePress, deleteLabel }: {
   item: Message; isMine: boolean; showTime: boolean; showAvatar: boolean; recipientInitial: string
   isArabic: boolean
+  canDelete: boolean
+  onDeletePress: () => void
+  deleteLabel: string
 }) {
+  const bubbleInner = (
+    <>
+      <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
+        <Text
+          style={[
+            styles.bubbleText,
+            isMine && styles.bubbleTextMine,
+            { writingDirection: isArabic ? 'rtl' : 'ltr', textAlign: isArabic ? 'right' : 'left' },
+          ]}
+        >
+          {item.text}
+        </Text>
+      </View>
+      {showTime && (
+        <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
+      )}
+    </>
+  )
+
   return (
     <View style={[styles.row, isMine ? styles.rowMine : styles.rowOther]}>
       {/* Recipient avatar (left side, only for received) */}
@@ -45,21 +68,29 @@ function MessageBubble({ item, isMine, showTime, showAvatar, recipientInitial, i
         </View>
       )}
 
-      <View style={[styles.bubbleCol, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
-        <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
-          <Text
-            style={[
-              styles.bubbleText,
-              isMine && styles.bubbleTextMine,
-              { writingDirection: isArabic ? 'rtl' : 'ltr', textAlign: isArabic ? 'right' : 'left' },
-            ]}
+      <View style={[styles.msgCluster, isMine && styles.msgClusterMine]}>
+        {canDelete && (
+          <TouchableOpacity
+            style={styles.deleteBtn}
+            onPress={onDeletePress}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={deleteLabel}
           >
-            {item.text}
-          </Text>
-        </View>
-        {showTime && (
-          <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
+            {/* Emoji — same pattern as tab bar / Home (💬 🏠); vector icon fonts are not wired in this app */}
+            <Text
+              style={[
+                styles.deleteBtnGlyph,
+                isMine ? styles.deleteBtnGlyphMine : styles.deleteBtnGlyphOther,
+              ]}
+            >
+              🗑️
+            </Text>
+          </TouchableOpacity>
         )}
+        <View style={[styles.bubbleCol, isMine ? { alignItems: 'flex-end' } : { alignItems: 'flex-start' }]}>
+          {bubbleInner}
+        </View>
       </View>
 
       {/* Spacer for sent messages so they don't stretch full width */}
@@ -77,10 +108,15 @@ export default function MessageScreen() {
   const navigation   = useNavigation<any>()
   const route        = useRoute<any>()
   const { recipientId, recipientName, recipientRole } = route.params || {}
-  const { socket }   = useSocket()
-  const { isArabic, lang, toggleLang } = useLang()
+  const { socket, onlineUsers } = useSocket()
+  const { isArabic, lang, toggleLang, tr } = useLang()
+
+  const recipientOnline =
+    Boolean(recipientId) &&
+    onlineUsers.some(u => String(u.userId) === String(recipientId))
 
   const [messages, setMessages]     = useState<Message[]>([])
+  const [conversationId, setConversationId] = useState<string | null>(null)
   const [loading, setLoading]       = useState(true)
   const [text, setText]             = useState('')
   const [sending, setSending]       = useState(false)
@@ -98,10 +134,17 @@ export default function MessageScreen() {
   // ── Load history ──────────────────────────────────────────────────────────
   const fetchMessages = useCallback(async () => {
     if (!recipientId) { setLoading(false); return }
+    setConversationId(null)
     try {
       const { data } = await getMessagesAPI(recipientId)
-      setMessages(Array.isArray(data) ? data : [])
-    } catch {}
+      const arr = Array.isArray(data) ? data : []
+      setMessages(arr)
+      const firstCid = arr.find((m: Message) => m.conversationId != null)?.conversationId
+      setConversationId(firstCid != null ? String(firstCid) : null)
+    } catch {
+      setMessages([])
+      setConversationId(null)
+    }
     setLoading(false)
   }, [recipientId])
 
@@ -109,16 +152,33 @@ export default function MessageScreen() {
 
   // ── Real-time incoming ────────────────────────────────────────────────────
   useEffect(() => {
-    if (!socket) return
-    const handler = (msg: Message) => {
-      if (msg.senderId === recipientId) {
-        setMessages(prev => [...prev, msg])
-        scrollToBottom(true)
-      }
+    if (!socket || !recipientId) return
+    const handler = (msg: Message & { conversationId?: string }) => {
+      const sid = String(msg.senderId ?? '')
+      const rid = String(recipientId)
+      const fromOther = sid === rid
+      const msgCid = msg.conversationId != null ? String(msg.conversationId) : ''
+      const sameConv = conversationId && msgCid && msgCid === conversationId
+      if (!fromOther && !sameConv) return
+      setMessages(prev => {
+        const mid = msg._id
+        if (mid && prev.some(m => m._id && String(m._id) === String(mid))) return prev
+        return [...prev, msg]
+      })
+      scrollToBottom(true)
+    }
+    const onDeleted = (payload: { messageId?: string; conversationId?: string }) => {
+      const mid = payload?.messageId
+      if (!mid) return
+      setMessages(prev => prev.filter(m => String(m._id) !== String(mid)))
     }
     socket.on('newMessage', handler)
-    return () => { socket.off('newMessage', handler) }
-  }, [socket, recipientId, scrollToBottom])
+    socket.on('messageDeleted', onDeleted)
+    return () => {
+      socket.off('newMessage', handler)
+      socket.off('messageDeleted', onDeleted)
+    }
+  }, [socket, recipientId, scrollToBottom, conversationId])
 
   // ── Auto-scroll when list grows or finishes loading ─────────────────────
   useEffect(() => {
@@ -150,18 +210,47 @@ export default function MessageScreen() {
 
     try {
       const { data } = await sendMessageAPI({ recipientId, text: msgText })
+      const saved = data as Message
+      if (saved?.conversationId != null) {
+        setConversationId(String(saved.conversationId))
+      }
       socket?.emit('sendMessage', {
         recipientId,
         senderId: user?._id,
         text:     msgText,
         createdAt: optimistic.createdAt,
       })
-      setMessages(prev => [...prev.slice(0, -1), data])
+      setMessages(prev => [...prev.slice(0, -1), saved])
     } catch {
       // revert optimistic
       setMessages(prev => prev.slice(0, -1))
     }
     setSending(false)
+  }
+
+  const confirmDeleteMessage = (item: Message) => {
+    if (!item._id) return
+    const isMine = String(item.senderId) === String(user?._id)
+    const isAdminUser = user?.role === 'admin'
+    if (!isMine && !isAdminUser) return
+    Alert.alert(tr.deleteMessage, tr.deleteMessageConfirm, [
+      { text: tr.cancel, style: 'cancel' },
+      {
+        text: tr.deleteMessage,
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteMessageAPI(item._id!)
+            setMessages(prev => prev.filter(m => String(m._id) !== String(item._id)))
+          } catch {
+            Alert.alert(
+              isArabic ? 'خطأ' : 'Error',
+              isArabic ? 'تعذر حذف الرسالة' : 'Could not delete the message',
+            )
+          }
+        },
+      },
+    ])
   }
 
   const recipientInitial = (recipientName || '?')[0]?.toUpperCase()
@@ -173,11 +262,12 @@ export default function MessageScreen() {
   const headerNameSize = windowWidth < 360 ? font.sm : font.base
 
   const renderItem = ({ item, index }: { item: Message; index: number }) => {
-    const isMine = item.senderId === user?._id
+    const isMine = String(item.senderId) === String(user?._id)
     const nextMsg = messages[index + 1]
-    const showTime    = !nextMsg || nextMsg.senderId !== item.senderId ||
+    const showTime    = !nextMsg || String(nextMsg.senderId) !== String(item.senderId) ||
       new Date(nextMsg.createdAt).getTime() - new Date(item.createdAt).getTime() > 5 * 60 * 1000
-    const showAvatar  = !nextMsg || nextMsg.senderId !== item.senderId
+    const showAvatar  = !nextMsg || String(nextMsg.senderId) !== String(item.senderId)
+    const canDelete = Boolean(item._id) && (isMine || user?.role === 'admin')
     return (
       <MessageBubble
         item={item}
@@ -186,6 +276,9 @@ export default function MessageScreen() {
         showAvatar={showAvatar}
         recipientInitial={recipientInitial}
         isArabic={isArabic}
+        canDelete={canDelete}
+        onDeletePress={() => confirmDeleteMessage(item)}
+        deleteLabel={tr.deleteMessage}
       />
     )
   }
@@ -246,7 +339,12 @@ export default function MessageScreen() {
                   { flexDirection: isArabic ? 'row-reverse' : 'row' },
                 ]}
               >
-                <View style={styles.onlineDot} />
+                <View
+                  style={[
+                    styles.onlineDot,
+                    recipientOnline ? styles.onlineDotOn : styles.onlineDotOff,
+                  ]}
+                />
                 <View
                   style={[
                     styles.headerStatusTexts,
@@ -259,10 +357,14 @@ export default function MessageScreen() {
                     </Text>
                   ) : null}
                   <Text
-                    style={[styles.headerStatus, isArabic ? styles.headerStatusAr : styles.headerStatusLtr]}
+                    style={[
+                      styles.headerStatus,
+                      isArabic ? styles.headerStatusAr : styles.headerStatusLtr,
+                      !recipientOnline && styles.headerStatusOffline,
+                    ]}
                     numberOfLines={1}
                   >
-                    {isArabic ? 'متصل' : 'Online'}
+                    {recipientOnline ? tr.statusOnline : tr.statusOffline}
                   </Text>
                 </View>
               </View>
@@ -370,7 +472,10 @@ const styles = StyleSheet.create({
   headerAvatarText:     { color: 'white', fontWeight: '800', fontSize: font.base },
   headerAvatarTextCompact: { fontSize: font.sm },
   headerName:           { color: colors.text, fontWeight: '700', fontSize: font.base },
-  onlineDot:            { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success, flexShrink: 0 },
+  onlineDot:            { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
+  onlineDotOn:          { backgroundColor: colors.success },
+  onlineDotOff:         { backgroundColor: colors.textDim },
+  headerStatusOffline:  { color: colors.textDim },
   headerStatusRow:      { alignItems: 'center', gap: 6, marginTop: 2, minWidth: 0 },
   headerStatusTexts:    { flex: 1, minWidth: 0, alignItems: 'center', gap: 4 },
   headerStatus:         { color: colors.textMuted, fontSize: 11 },
@@ -388,7 +493,14 @@ const styles = StyleSheet.create({
   msgAvatar:     { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginRight: 8, alignSelf: 'flex-end', marginBottom: 4 },
   msgAvatarText: { color: 'white', fontWeight: '800', fontSize: 12 },
 
-  bubbleCol: { maxWidth: '72%' },
+  msgCluster:    { flexDirection: 'row', alignItems: 'flex-end', gap: 6, maxWidth: '78%', flexShrink: 1 },
+  msgClusterMine:{ flexDirection: 'row-reverse' },
+  deleteBtn:         { padding: 4, justifyContent: 'center' },
+  deleteBtnGlyph:    { fontSize: 17, lineHeight: 22 },
+  deleteBtnGlyphMine:{ opacity: 0.85 },
+  deleteBtnGlyphOther:{ opacity: 0.75, color: colors.textDim },
+
+  bubbleCol: { maxWidth: '100%', flexShrink: 1 },
   bubble:    { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
   bubbleMine:  { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
   bubbleOther: { backgroundColor: colors.card, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: colors.border },
