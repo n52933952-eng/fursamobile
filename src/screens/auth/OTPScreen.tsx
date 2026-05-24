@@ -1,3 +1,4 @@
+// OTPScreen — placeholder email verify (hardcoded 1234 until real OTP wired)
 import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,

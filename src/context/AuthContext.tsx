@@ -1,3 +1,4 @@
+// AuthContext — session restore, Google logout cleanup, orphan-session listener
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { DeviceEventEmitter } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -10,12 +11,15 @@ import { decodeJwtUserId } from '../utils/jwtPayload'
 interface User {
   _id: string
   username: string
+  firstName?: string
+  lastName?: string
+  career?: string
   email: string
   role: 'client' | 'freelancer' | 'admin'
   profilePic?: string
   bio?: string
   skills?: string[]
-  /** Categories you work in / post about — used to filter freelancer project feed. */
+  // freelancer home feed filters by these — set at signup or in Profile
   interestedCategories?: string[]
   rating?: number
   totalProjects?: number

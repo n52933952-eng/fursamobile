@@ -1,3 +1,4 @@
+// navigation — auth stack vs role-based client/freelancer tabs + overlay screens
 import React from 'react'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
@@ -131,6 +132,7 @@ function AuthStack() {
 // ─── Main stack — tabs + overlay screens ─────────────────────────────────────
 function MainStack() {
   const { user } = useAuth()
+  // client vs freelancer get different tab sets (Post vs My Bids)
   const Tabs = user?.role === 'client' ? ClientTabs : FreelancerTabs
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

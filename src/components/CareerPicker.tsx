@@ -1,38 +1,33 @@
-// ProjectCategoryPicker — multi-select chips for post project / profile categories
+// CareerPicker — single-select chips (Full Stack, IT, Writing, …)
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
-import { PROJECT_CATEGORIES } from '../constants/projectCategories'
+import { FREELANCER_CAREERS } from '../constants/freelancerCareers'
 import { colors, spacing, radius, font } from '../theme'
 
 type Props = {
-  selected: string[]
-  onChange: (next: string[]) => void
+  value: string
+  onChange: (career: string) => void
   disabled?: boolean
   isArabic: boolean
 }
 
-export default function ProjectCategoryPicker({ selected, onChange, disabled, isArabic }: Props) {
+export default function CareerPicker({ value, onChange, disabled, isArabic }: Props) {
   const dir = isArabic ? 'right' as const : 'left' as const
-  const toggle = (cat: string) => {
-    if (disabled) return
-    const on = selected.includes(cat)
-    onChange(on ? selected.filter((c) => c !== cat) : [...selected, cat])
-  }
 
   return (
     <View style={[styles.wrap, { flexDirection: isArabic ? 'row-reverse' : 'row' }]}>
-      {PROJECT_CATEGORIES.map((cat) => {
-        const active = selected.includes(cat)
+      {FREELANCER_CAREERS.map((career) => {
+        const active = value === career
         return (
           <TouchableOpacity
-            key={cat}
+            key={career}
             style={[styles.chip, active && styles.chipActive]}
-            onPress={() => toggle(cat)}
+            onPress={() => onChange(career)}
             disabled={disabled}
             activeOpacity={0.8}
           >
             <Text style={[styles.chipText, active && styles.chipTextActive, { textAlign: dir }]}>
-              {cat}
+              {career}
             </Text>
           </TouchableOpacity>
         )

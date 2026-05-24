@@ -1,3 +1,4 @@
+// NotificationsScreen — DB notifications + socket merge, filter tabs
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -27,6 +28,7 @@ const typeConfig: Record<NotifType | string, {
 // ─── Time formatter (bilingual) ───────────────────────────────────────────────
 
 function isMongoObjectId(id: string) {
+  // socket-only notifs use pa_/pay_ prefixes — skip mark-one-read for those
   return /^[a-fA-F0-9]{24}$/.test(String(id))
 }
 

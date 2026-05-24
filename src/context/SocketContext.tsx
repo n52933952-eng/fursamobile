@@ -1,3 +1,4 @@
+// SocketContext — realtime notifications, online users, background disconnect
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { AppState, type AppStateStatus } from 'react-native'
 import io, { Socket } from 'socket.io-client'
@@ -15,7 +16,7 @@ export type AppNotification = {
   createdAt: string
 }
 
-/** Same shape as server `getOnlineUsers` payload */
+// matches server getOnlineUsers payload
 export type OnlineUserEntry = { userId: string; onlineAt: number }
 
 type SocketContextType = {
@@ -23,7 +24,7 @@ type SocketContextType = {
   notifications: AppNotification[]
   unreadNotifications: number
   unreadMessages: number
-  /** User ids currently connected to the socket server (web + mobile) */
+  // web + mobile users currently on socket (for green dot in chat)
   onlineUsers: OnlineUserEntry[]
   markNotificationsRead: () => void
   markOneNotificationRead: (id: string) => void
@@ -172,11 +173,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user?._id])
 
-  /**
-   * While in background, many devices keep the WebSocket open, so the server still
-   * lists the user as online. Disconnect explicitly so admin "Online" matches reality.
-   * Reconnect when the app returns to the foreground.
-   */
+  // disconnect socket when app goes to background — admin was seeing fake "online"
   useEffect(() => {
     if (!user?._id) return
 

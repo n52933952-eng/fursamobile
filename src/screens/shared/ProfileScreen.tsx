@@ -1,3 +1,4 @@
+// ProfileScreen — edit bio/skills/categories, avatar upload, support chat
 import React, { useState, useEffect } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -12,12 +13,19 @@ import { useLang } from '../../context/LanguageContext'
 import { updateProfileAPI, aiExtractSkillsAPI, getSupportAdminAPI, uploadProfileAvatarAPI, resolveServerAssetUrl } from '../../api'
 import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
 import ProjectCategoryPicker from '../../components/ProjectCategoryPicker'
+import CareerPicker from '../../components/CareerPicker'
+import { displayName, nameInitial } from '../../utils/displayName'
 
 const SKILLS_OPTIONS = [
   'React', 'React Native', 'Node.js', 'Python', 'UI/UX', 'Figma',
   'Graphic Design', 'Video Editing', 'Copywriting', 'SEO', 'Marketing',
   'Data Analysis', 'Translation', 'Excel', 'PHP', 'Laravel',
 ]
+
+function nameFromUsername(username?: string) {
+  const parts = String(username || '').trim().split(/\s+/).filter(Boolean)
+  return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '' }
+}
 
 const roleColor: Record<string, string> = {
   client:     colors.success,
@@ -33,6 +41,9 @@ export default function ProfileScreen() {
   const [editing, setEditing]         = useState(false)
   const [saving, setSaving]           = useState(false)
   const [bio, setBio]                 = useState(user?.bio || '')
+  const [firstName, setFirstName]     = useState((user as any)?.firstName || '')
+  const [lastName, setLastName]       = useState((user as any)?.lastName || '')
+  const [career, setCareer]           = useState((user as any)?.career || '')
   const [country, setCountry]         = useState((user as any)?.country || '')
   const [skills, setSkills]           = useState<string[]>(user?.skills || [])
   const [skillInput, setSkillInput]   = useState('')
@@ -46,7 +57,11 @@ export default function ProfileScreen() {
   const avatarUri = resolveServerAssetUrl(user?.profilePic)
 
   useEffect(() => {
+    const fromUsername = nameFromUsername(user?.username)
     setBio(user?.bio || '')
+    setFirstName((user as any)?.firstName?.trim() || fromUsername.firstName)
+    setLastName((user as any)?.lastName?.trim() || fromUsername.lastName)
+    setCareer((user as any)?.career || '')
     setCountry((user as any)?.country || '')
     setSkills(user?.skills || [])
     setInterestedCategories((user as any)?.interestedCategories || [])
@@ -63,6 +78,7 @@ export default function ProfileScreen() {
   }
 
   const openSupportChat = async () => {
+    // same support-admin endpoint as ChatScreen banner
     try {
       const { data } = await getSupportAdminAPI()
       const admin = data as { _id: string; username?: string; role?: string }
@@ -109,14 +125,55 @@ export default function ProfileScreen() {
   }
 
   const handleSave = async () => {
+    const fn = firstName.trim()
+    const ln = lastName.trim()
+
+    if (user?.role === 'freelancer') {
+      if (!fn || !ln) {
+        Alert.alert(
+          isArabic ? 'خطأ' : 'Error',
+          isArabic ? 'الاسم الأول واسم العائلة مطلوبان' : 'First name and last name are required'
+        )
+        return
+      }
+      if (!career) {
+        Alert.alert(
+          isArabic ? 'خطأ' : 'Error',
+          isArabic ? 'اختر تخصصك (Full Stack، IT، كتابة…)' : 'Please select your career (Full Stack, IT, Writing…)'
+        )
+        return
+      }
+    }
+
     setSaving(true)
     try {
-      const { data } = await updateProfileAPI({ bio, country, skills, interestedCategories })
-      updateUser(data)
+      const payload: Record<string, unknown> = {
+        bio,
+        country,
+        skills,
+        interestedCategories,
+      }
+      if (fn) payload.firstName = fn
+      if (ln) payload.lastName = ln
+      if (user?.role === 'freelancer') payload.career = career
+
+      const { data } = await updateProfileAPI(payload)
+      const rawId = (data as any)?._id ?? (data as any)?.id
+      const normalized = { ...(data as object), _id: rawId ? String(rawId) : user?._id }
+      updateUser(normalized as any)
+      setFirstName(fn)
+      setLastName(ln)
+      if (user?.role === 'freelancer') setCareer(career)
       setEditing(false)
-      Alert.alert('✅ Saved', 'Profile updated successfully.')
+      Alert.alert(
+        isArabic ? '✅ تم الحفظ' : '✅ Saved',
+        isArabic ? 'تم تحديث الملف الشخصي بنجاح.' : 'Profile updated successfully.'
+      )
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.error || 'Failed to update profile')
+      Alert.alert(
+        isArabic ? 'خطأ' : 'Error',
+        e?.response?.data?.error || (isArabic ? 'فشل تحديث الملف الشخصي' : 'Failed to update profile')
+      )
     }
     setSaving(false)
   }
@@ -138,6 +195,7 @@ export default function ProfileScreen() {
       const name = asset.fileName || `avatar_${Date.now()}.jpg`
       let type = asset.type || 'image/jpeg'
       if (type === 'image/jpg') type = 'image/jpeg'
+      // RN FormData shape — uploadProfileAvatarAPI uses fetch not axios
       form.append('avatar', { uri: asset.uri, name, type } as any)
       const { data } = await uploadProfileAvatarAPI(form)
       updateUser(data as any)
@@ -184,7 +242,8 @@ export default function ProfileScreen() {
     ])
   }
 
-  const initials = user?.username?.slice(0, 2).toUpperCase() || '??'
+  const initials = nameInitial(user)
+  const shownName = displayName(user)
   const rc = roleColor[user?.role || 'client']
 
   return (
@@ -235,7 +294,10 @@ export default function ProfileScreen() {
           {canChangeAvatar && (
             <Text style={[styles.avatarHint, { textAlign: 'center' }]}>{tr.tapToChangePhoto}</Text>
           )}
-          <Text style={styles.username}>{user?.username}</Text>
+          <Text style={styles.username}>{shownName}</Text>
+          {user?.role === 'freelancer' && (user as any)?.career ? (
+            <Text style={styles.careerBadge}>{(user as any).career}</Text>
+          ) : null}
           <Text style={styles.email}>{user?.email}</Text>
           {/* Debug (remove later): helps verify which Mongo _id the app is using */}
           <Text style={{ color: 'rgba(255,255,255,0.65)', marginTop: 6, fontSize: 12 }}>
@@ -258,7 +320,7 @@ export default function ProfileScreen() {
               accessibilityLabel={isArabic ? 'عرض التقييمات والمراجعات' : 'View ratings and reviews'}
               onPress={() => navigation.navigate('ReviewsScreen', {
                 freelancerId:   user?._id,
-                freelancerName: user?.username,
+                freelancerName: displayName(user),
               })}
             >
               <Text style={[styles.statValue, { color: colors.warning }]}>
@@ -290,7 +352,7 @@ export default function ProfileScreen() {
           style={styles.reviewsBtn}
           onPress={() => navigation.navigate('ReviewsScreen', {
             freelancerId:   user?._id,
-            freelancerName: user?.username,
+            freelancerName: displayName(user),
           })}
         >
           <Text style={styles.reviewsBtnText}>
@@ -313,6 +375,56 @@ export default function ProfileScreen() {
             <Text style={[styles.supportRowSub, { textAlign: dir }]}>{tr.contactSupportSub}</Text>
             <Text style={[styles.supportRowGo, { textAlign: isArabic ? 'left' : 'right' }]}>{tr.messageSupportTeam} →</Text>
           </TouchableOpacity>
+        )}
+
+        {/* Name */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{isArabic ? 'الاسم' : 'Name'}</Text>
+          {editing ? (
+            <>
+              <TextInput
+                style={[styles.input, { marginBottom: spacing.sm, textAlign: dir }]}
+                value={firstName}
+                onChangeText={setFirstName}
+                placeholder={isArabic ? 'الاسم الأول' : 'First name'}
+                placeholderTextColor={colors.textDim}
+                autoCapitalize="words"
+              />
+              <TextInput
+                style={[styles.input, { textAlign: dir }]}
+                value={lastName}
+                onChangeText={setLastName}
+                placeholder={isArabic ? 'اسم العائلة' : 'Last name'}
+                placeholderTextColor={colors.textDim}
+                autoCapitalize="words"
+              />
+            </>
+          ) : (
+            <Text style={styles.bioText}>{shownName}</Text>
+          )}
+        </View>
+
+        {/* Career — freelancers only */}
+        {user?.role === 'freelancer' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{isArabic ? 'المهنة / التخصص' : 'Career'}</Text>
+            <Text style={[styles.bioText, { marginBottom: spacing.sm }]}>
+              {isArabic
+                ? 'يظهر تخصصك في بحث العملاء (مثل Full Stack أو IT أو كتابة).'
+                : 'Clients can find you by career when they search (e.g. Full Stack, IT, Writing).'}
+            </Text>
+            {editing ? (
+              <CareerPicker value={career} onChange={setCareer} isArabic={isArabic} />
+            ) : career ? (
+              <View style={styles.catPill}>
+                <Text style={styles.catPillText}>{career}</Text>
+              </View>
+            ) : (
+              <Text style={styles.bioText}>
+                {isArabic ? 'لم يُحدد التخصص — عدّل الملف لإضافته' : 'No career set — tap Edit to add one'}
+              </Text>
+            )}
+          </View>
         )}
 
         {/* Bio */}
@@ -475,6 +587,7 @@ const styles = StyleSheet.create({
   avatarHint:   { color: colors.textMuted, fontSize: font.sm, marginBottom: spacing.sm, paddingHorizontal: spacing.md },
   avatarText:   { color: 'white', fontSize: font.xxl, fontWeight: '900' },
   username:     { color: colors.text, fontSize: font.xl, fontWeight: '800' },
+  careerBadge:  { color: colors.primary, fontSize: font.sm, fontWeight: '700', marginTop: 4 },
   email:        { color: colors.textMuted, fontSize: font.sm, marginTop: 2, marginBottom: spacing.sm },
   roleBadge:    { paddingHorizontal: 14, paddingVertical: 5, borderRadius: radius.full, borderWidth: 1 },
   roleText:     { fontSize: font.sm, fontWeight: '700' },

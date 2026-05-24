@@ -1,3 +1,4 @@
+// ProjectDetailScreen — project view, proposals, accept bid, freelancer submit
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -40,7 +41,7 @@ function timeAgo(iso: string, isArabic: boolean) {
   return d === 0 ? 'Today' : d === 1 ? 'Yesterday' : `${d} days ago`
 }
 
-/** Budget / meta: deadline may be ISO date or a number of days */
+// deadline field is inconsistent — sometimes ISO date, sometimes "30" days
 function formatDeadline(deadline: unknown, isArabic: boolean) {
   if (deadline == null || deadline === '') return isArabic ? 'مفتوح' : 'Open'
   const raw = String(deadline).trim()
@@ -267,6 +268,7 @@ export default function ProjectDetailScreen() {
 
   useEffect(() => {
     if (!socket || !projectId) return
+    // refetch when bids change — don't rely on socket payload shape
     const onRealtime = (payload: { projectId?: string; project?: { _id?: string } }) => {
       const pid = payload?.projectId ?? payload?.project?._id
       if (pid != null && String(pid) === String(projectId)) load()
@@ -284,6 +286,7 @@ export default function ProjectDetailScreen() {
   }, [socket, projectId, load])
 
   const handleAccept = async (proposalId: string, bidAmount: number) => {
+    // accept locks client escrow on server — confirm before irreversible
     Alert.alert(
       isArabic ? 'قبول العرض؟' : 'Accept Bid?',
       isArabic

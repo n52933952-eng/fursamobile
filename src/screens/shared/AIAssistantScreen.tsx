@@ -1,3 +1,4 @@
+// AIAssistantScreen — in-app Groq chat via /ai/chat
 import React, { useCallback, useRef, useState } from 'react'
 import {
   View,
@@ -17,7 +18,6 @@ import { useLang } from '../../context/LanguageContext'
 import { aiChatAPI, type AiChatMessage } from '../../api'
 import { colors, spacing, radius, font } from '../../theme'
 
-//
 type Row = AiChatMessage & { id: string }
 
 let idSeq = 0
@@ -32,7 +32,7 @@ export default function AIAssistantScreen() {
   const { tr, isArabic } = useLang()
   const dir = isArabic ? 'right' : 'left'
 
-  /** Conversation only (welcome is UI-only so the AI API always starts with a user message). */
+  // welcome bubble is UI-only — API expects first message to be from user
   const [rows, setRows] = useState<Row[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)

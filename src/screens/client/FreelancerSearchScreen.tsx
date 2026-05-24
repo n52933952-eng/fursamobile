@@ -1,3 +1,4 @@
+// FreelancerSearchScreen — client browses freelancers, message or view reviews
 import React, { useState, useCallback } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
@@ -9,9 +10,11 @@ import { useLang } from '../../context/LanguageContext'
 import { useAuth } from '../../context/AuthContext'
 import { searchFreelancersAPI, sendMessageAPI } from '../../api'
 import { colors, spacing, radius, font, screenHeaderPaddingTop } from '../../theme'
+import { FREELANCER_CAREERS } from '../../constants/freelancerCareers'
+import { displayName, nameInitial } from '../../utils/displayName'
 
-// ─── Skill chips ──────────────────────────────────────────────────────────────
-const SKILLS = ['All', 'React', 'Node.js', 'Design', 'Python', 'Flutter', 'Writing', 'SEO', 'Video', 'Marketing']
+// Career filter chips for quick browse
+const CAREER_CHIPS = ['All', ...FREELANCER_CAREERS]
 
 function StarRow({ rating }: { rating: number }) {
   const r = Math.round(rating * 2) / 2
@@ -33,9 +36,10 @@ function FreelancerCard({ freelancer, onMessage, onProfile, onViewReviews, isAra
   isArabic: boolean
 }) {
   const dir = isArabic ? 'right' as const : 'left' as const
-  const initial = freelancer.username?.[0]?.toUpperCase() || '?'
+  const shownName = displayName(freelancer)
+  const initial = nameInitial(freelancer)
   const avatarColors = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899']
-  const color = avatarColors[freelancer.username?.charCodeAt(0) % avatarColors.length] || colors.primary
+  const color = avatarColors[shownName.charCodeAt(0) % avatarColors.length] || colors.primary
   const rev = freelancer.totalReviews ?? 0
   const proj = freelancer.totalProjects ?? 0
 
@@ -47,7 +51,10 @@ function FreelancerCard({ freelancer, onMessage, onProfile, onViewReviews, isAra
           <Text style={styles.avatarText}>{initial}</Text>
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={[styles.cardName, { textAlign: dir }]}>{freelancer.username}</Text>
+          <Text style={[styles.cardName, { textAlign: dir }]}>{shownName}</Text>
+          {freelancer.career ? (
+            <Text style={[styles.cardCareer, { textAlign: dir }]}>{freelancer.career}</Text>
+          ) : null}
           <Text style={[styles.cardBio, { textAlign: dir }]} numberOfLines={1}>
             {freelancer.bio || (isArabic ? 'مستقل محترف' : 'Professional Freelancer')}
           </Text>
@@ -112,9 +119,10 @@ function ProfileModal({ freelancer, visible, onClose, onMessage, onViewReviews, 
 }) {
   if (!freelancer) return null
   const dir = isArabic ? 'right' as const : 'left' as const
-  const initial = freelancer.username?.[0]?.toUpperCase() || '?'
+  const shownName = displayName(freelancer)
+  const initial = nameInitial(freelancer)
   const avatarColors = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899']
-  const color = avatarColors[freelancer.username?.charCodeAt(0) % avatarColors.length] || colors.primary
+  const color = avatarColors[shownName.charCodeAt(0) % avatarColors.length] || colors.primary
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -126,7 +134,10 @@ function ProfileModal({ freelancer, visible, onClose, onMessage, onViewReviews, 
               <View style={[styles.avatar, { width: 72, height: 72, borderRadius: 36, backgroundColor: color, marginBottom: 10 }]}>
                 <Text style={[styles.avatarText, { fontSize: 30 }]}>{initial}</Text>
               </View>
-              <Text style={{ color: colors.text, fontSize: font.xl, fontWeight: '800' }}>{freelancer.username}</Text>
+              <Text style={{ color: colors.text, fontSize: font.xl, fontWeight: '800' }}>{shownName}</Text>
+              {freelancer.career ? (
+                <Text style={{ color: colors.primary, fontSize: font.sm, fontWeight: '700', marginTop: 4 }}>{freelancer.career}</Text>
+              ) : null}
               {freelancer.country && <Text style={{ color: colors.textMuted, fontSize: font.sm, marginTop: 2 }}>📍 {freelancer.country}</Text>}
               <TouchableOpacity
                 activeOpacity={0.75}
@@ -202,7 +213,7 @@ export default function FreelancerSearchScreen() {
   const dir = isArabic ? 'right' as const : 'left' as const
 
   const [query, setQuery]           = useState('')
-  const [skill, setSkill]           = useState('All')
+  const [careerChip, setCareerChip] = useState('All')
   const [results, setResults]       = useState<any[]>([])
   const [loading, setLoading]       = useState(false)
   const [searched, setSearched]     = useState(false)
@@ -214,18 +225,17 @@ export default function FreelancerSearchScreen() {
     try {
       const params: any = {}
       if (query.trim()) params.query = query.trim()
-      if (skill !== 'All') params.skill = skill
+      if (careerChip !== 'All') params.career = careerChip
       const { data } = await searchFreelancersAPI(params)
       setResults(Array.isArray(data) ? data : [])
     } catch {
       Alert.alert(isArabic ? 'خطأ' : 'Error', isArabic ? 'فشل البحث' : 'Search failed')
     }
     setLoading(false)
-  }, [query, skill, isArabic])
+  }, [query, careerChip, isArabic])
 
-  // Auto-search when skill changes
-  const handleSkill = (s: string) => {
-    setSkill(s)
+  const handleCareerChip = (c: string) => {
+    setCareerChip(c)
     setSearched(false)
     setResults([])
   }
@@ -233,7 +243,7 @@ export default function FreelancerSearchScreen() {
   const handleMessage = (freelancer: any) => {
     navigation.navigate('MessageScreen', {
       recipientId:   freelancer._id,
-      recipientName: freelancer.username,
+      recipientName: displayName(freelancer),
     })
   }
 
@@ -260,7 +270,7 @@ export default function FreelancerSearchScreen() {
           <Text style={{ color: colors.textMuted, marginHorizontal: 10 }}>🔍</Text>
           <TextInput
             style={[styles.searchInput, { textAlign: dir }]}
-            placeholder={isArabic ? 'اسم المستقل أو التخصص...' : 'Search by name or skill...'}
+            placeholder={isArabic ? 'اسم المستقل أو التخصص (Full Stack، IT، كتابة…)' : 'Name or career (Full Stack, IT, Writing…)'}
             placeholderTextColor={colors.textDim}
             value={query}
             onChangeText={setQuery}
@@ -285,13 +295,13 @@ export default function FreelancerSearchScreen() {
         style={styles.chipScroll}
         contentContainerStyle={{ paddingHorizontal: spacing.md, gap: 8, paddingRight: 20 }}
       >
-        {SKILLS.map(s => (
+        {CAREER_CHIPS.map(s => (
           <TouchableOpacity
             key={s}
-            style={[styles.chip, skill === s && styles.chipActive]}
-            onPress={() => handleSkill(s)}
+            style={[styles.chip, careerChip === s && styles.chipActive]}
+            onPress={() => handleCareerChip(s)}
           >
-            <Text style={[styles.chipText, skill === s && styles.chipTextActive]}>{s}</Text>
+            <Text style={[styles.chipText, careerChip === s && styles.chipTextActive]}>{s}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -311,14 +321,14 @@ export default function FreelancerSearchScreen() {
             </Text>
             <Text style={[styles.emptySubtitle, { textAlign: 'center' }]}>
               {isArabic
-                ? 'اكتب اسماً أو اختر تخصصاً ثم اضغط بحث'
-                : 'Type a name or pick a skill, then tap Search'}
+                ? 'اكتب الاسم الأول أو الأخير أو التخصص ثم اضغط بحث'
+                : 'Type first name, last name, or career — then tap Search'}
             </Text>
             {/* Tips */}
             <View style={styles.tipsBox}>
               {[
                 isArabic ? '⭐ تصفية حسب التقييم' : '⭐ Filter by rating',
-                isArabic ? '🛠 اختر التخصص المطلوب' : '🛠 Browse by skill',
+                isArabic ? '🛠 تصفية حسب التخصص' : '🛠 Filter by career',
                 isArabic ? '💬 ابدأ محادثة مباشرة' : '💬 Start a chat directly',
                 isArabic ? '📋 راجع ملف المستقل' : '📋 View full profile',
               ].map((tip, i) => (
@@ -348,6 +358,10 @@ export default function FreelancerSearchScreen() {
                 isArabic={isArabic}
                 onMessage={() => handleMessage(f)}
                 onProfile={() => setProfileOf(f)}
+                onViewReviews={() => navigation.navigate('ReviewsScreen', {
+                  freelancerId:   f._id,
+                  freelancerName: displayName(f),
+                })}
               />
             ))}
           </>
@@ -361,7 +375,7 @@ export default function FreelancerSearchScreen() {
         onMessage={() => profileOf && handleMessage(profileOf)}
         onViewReviews={() => profileOf && navigation.navigate('ReviewsScreen', {
           freelancerId:   profileOf._id,
-          freelancerName: profileOf.username,
+          freelancerName: displayName(profileOf),
         })}
         isArabic={isArabic}
       />
@@ -398,6 +412,7 @@ const styles = StyleSheet.create({
   avatar:     { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#fff', fontWeight: '800', fontSize: font.xl },
   cardName:   { color: colors.text, fontWeight: '800', fontSize: font.base },
+  cardCareer: { color: colors.primary, fontSize: font.sm, fontWeight: '700', marginTop: 2 },
   cardBio:    { color: colors.textMuted, fontSize: font.sm, marginTop: 2 },
   ratingRow:      { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4, flexWrap: 'wrap' },
   ratingText:     { color: colors.warning, fontSize: font.sm, fontWeight: '700', marginLeft: 2 },

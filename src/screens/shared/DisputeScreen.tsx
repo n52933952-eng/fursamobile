@@ -1,3 +1,4 @@
+// DisputeScreen — file dispute on a project (reason stored in English for admin)
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity,

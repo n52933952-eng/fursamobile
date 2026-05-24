@@ -1,3 +1,4 @@
+// ChatScreen — conversation list, user search, support chat entry
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -143,6 +144,7 @@ export default function ChatScreen() {
     }
   }, [socket, fetchConversations])
 
+  // support chat — loads the one admin user from API
   const openSupportChat = async () => {
     try {
       const { data } = await getSupportAdminAPI()

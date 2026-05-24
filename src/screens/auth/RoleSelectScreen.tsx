@@ -1,3 +1,4 @@
+// RoleSelectScreen — first-time Google users pick client vs freelancer
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView,
@@ -9,6 +10,7 @@ import { googleSignInAPI } from '../../api'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { colors, spacing, radius, font } from '../../theme'
 import ProjectCategoryPicker from '../../components/ProjectCategoryPicker'
+import CareerPicker from '../../components/CareerPicker'
 
 export default function RoleSelectScreen() {
   const navigation         = useNavigation<any>()
@@ -17,6 +19,7 @@ export default function RoleSelectScreen() {
   const { isArabic }       = useLang()
   const [role, setRole]    = useState<'client' | 'freelancer' | null>(null)
   const [interestedCategories, setInterestedCategories] = useState<string[]>([])
+  const [career, setCareer] = useState('')
   const [loading, setLoading] = useState(false)
 
   // Passed from WelcomeScreen / LoginScreen after Google sign-in
@@ -31,10 +34,18 @@ export default function RoleSelectScreen() {
       )
       return
     }
+    if (role === 'freelancer' && !career) {
+      Alert.alert(
+        isArabic ? 'تنبيه' : 'Almost there',
+        isArabic ? 'اختر تخصصك (مثل Full Stack أو IT)' : 'Select your career (e.g. Full Stack, IT)'
+      )
+      return
+    }
     setLoading(true)
     try {
+      // clear stale token before role signup — avoids orphan JWT on second googleSignInAPI
       await AsyncStorage.multiRemove(['user', 'token'])
-      const { data } = await googleSignInAPI({ ...googlePayload, role, interestedCategories })
+      const { data } = await googleSignInAPI({ ...googlePayload, role, interestedCategories, career })
       const { token, ...userData } = data
       await login(userData, token)
     } catch (e: any) {
@@ -43,6 +54,8 @@ export default function RoleSelectScreen() {
         isArabic ? 'خطأ' : 'Error',
         err === 'categories_required'
           ? (isArabic ? 'اختر فئة واحدة على الأقل' : 'Select at least one category')
+          : err === 'career_required'
+          ? (isArabic ? 'اختر تخصصك (Full Stack، IT، كتابة…)' : 'Select your career (Full Stack, IT, Writing…)')
           : (err || 'Failed to complete sign-in')
       )
     }
@@ -114,6 +127,20 @@ export default function RoleSelectScreen() {
       {role === 'freelancer' ? (
         <View style={styles.catBlock}>
           <Text style={[styles.catTitle, { textAlign: dir }]}>
+            {isArabic ? 'المهنة / التخصص' : 'Career'}
+          </Text>
+          <Text style={[styles.catHint, { textAlign: dir }]}>
+            {isArabic
+              ? 'يستطيع العملاء البحث عنك بالاسم أو بالتخصص (مثل Full Stack أو IT).'
+              : 'Clients can find you by name or career (e.g. Full Stack, IT, Writing).'}
+          </Text>
+          <CareerPicker value={career} onChange={setCareer} isArabic={isArabic} />
+        </View>
+      ) : null}
+
+      {role === 'freelancer' ? (
+        <View style={styles.catBlock}>
+          <Text style={[styles.catTitle, { textAlign: dir }]}>
             {isArabic ? 'مجالات المشاريع' : 'Project categories'}
           </Text>
           <Text style={[styles.catHint, { textAlign: dir }]}>
@@ -137,10 +164,10 @@ export default function RoleSelectScreen() {
       <TouchableOpacity
         style={[
           styles.confirmBtn,
-          (!role || (role === 'freelancer' && interestedCategories.length === 0)) && styles.confirmBtnDisabled,
+          (!role || (role === 'freelancer' && (interestedCategories.length === 0 || !career))) && styles.confirmBtnDisabled,
         ]}
         onPress={handleConfirm}
-        disabled={!role || (role === 'freelancer' && interestedCategories.length === 0) || loading}
+        disabled={!role || (role === 'freelancer' && (interestedCategories.length === 0 || !career)) || loading}
       >
         {loading
           ? <ActivityIndicator color="#fff" size="small" />

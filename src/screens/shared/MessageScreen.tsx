@@ -1,3 +1,4 @@
+// MessageScreen — 1:1 thread, socket realtime + optimistic send
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
@@ -26,7 +27,7 @@ function formatTime(iso: string) {
   })
 }
 
-/** LTR isolate — stops Arabic RTL layout from reordering Latin usernames into stray fragments */
+// ltrIsolate — stops Arabic RTL from splitting Latin usernames in header
 function ltrIsolate(s: string) {
   return `\u2066${s}\u2069`
 }
@@ -214,6 +215,7 @@ export default function MessageScreen() {
       if (saved?.conversationId != null) {
         setConversationId(String(saved.conversationId))
       }
+      // echo to socket so web/admin gets it without waiting for server broadcast
       socket?.emit('sendMessage', {
         recipientId,
         senderId: user?._id,

@@ -1,3 +1,4 @@
+// ReviewsScreen — freelancer ratings list + leave review modal
 import React, { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -200,6 +201,7 @@ export default function ReviewsScreen() {
   useEffect(() => { fetchReviews() }, [fetchReviews])
 
   const handleSubmitReview = async (rating: number, comment: string) => {
+    // projectId from ProjectDetail navigation — backend ties review to completed work
     try {
       await createReviewAPI({ revieweeId: freelancerId, projectId, rating, comment })
       setShowModal(false)

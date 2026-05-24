@@ -1,3 +1,4 @@
+// MyBidsScreen — freelancer proposal tabs (pending / won / done / rejected)
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -257,6 +258,7 @@ export default function MyBidsScreen() {
 
   useEffect(() => {
     if (!socket) return
+    // jump to Won tab when client accepts — don't wait for manual refresh
     const handler = (data: any) => {
       showToast(`🎉 ${isArabic ? 'تم قبول عرضك!' : 'Your bid was accepted!'} — ${data.projectTitle || ''}`)
       setProposals(prev =>

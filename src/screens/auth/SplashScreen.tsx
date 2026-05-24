@@ -1,3 +1,4 @@
+// SplashScreen — shown while AuthContext restores token from AsyncStorage
 import React, { useEffect } from 'react'
 import { View, Image, StyleSheet, StatusBar, Animated } from 'react-native'
 import { colors } from '../../theme'

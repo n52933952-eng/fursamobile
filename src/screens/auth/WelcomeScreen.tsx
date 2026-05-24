@@ -1,3 +1,4 @@
+// WelcomeScreen — landing + Google sign-in (role_required → RoleSelect)
 import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar,
@@ -25,7 +26,7 @@ function safeAlert(title: string, message: string) {
   }, 250)
 }
 
-/** Wait until Android Activity is ready for Google’s sign-in overlay (RN 0.79 / bridgeless). */
+// wait for Android Activity before Google overlay — RN bridgeless NULL_PRESENTER
 function runWhenActivityReady(fn: () => void) {
   InteractionManager.runAfterInteractions(() => {
     requestAnimationFrame(() => {

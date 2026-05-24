@@ -1,6 +1,4 @@
-/**
- * Maps axios / network errors to user-visible text (cold start, timeouts, offline).
- */
+// networkErrors — axios timeout/offline/500 → user-facing EN/AR strings
 export function getFriendlyApiError(err: unknown, isArabic: boolean, fallbackWrongCreds?: string): string {
   const e = err as any
   const server = e?.response?.data?.error

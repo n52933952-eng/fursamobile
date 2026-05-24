@@ -1,3 +1,4 @@
+// WalletScreen — balance, PayTabs top-up, sandbox demo card, withdrawals
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -60,7 +61,7 @@ const WITHDRAW_METHODS = [
   { id: 'zain',  icon: '📱', name: 'Zain Cash',     nameAr: 'زين كاش',     detail: '+964 771 234 5678',                  note: 'Instant',           noteAr: 'فوري' },
 ]
 
-/** Demo only — never store full card numbers; last4 + payout hints for realistic UI */
+// demo card UI only — AsyncStorage holds last4, never full PAN
 const STORAGE_DEMO_CARD = 'fursa_sandbox_demo_card_last4'
 const STORAGE_W_BANK = 'fursa_sandbox_withdraw_bank'
 const STORAGE_W_ZAIN = 'fursa_sandbox_withdraw_zain'
@@ -141,7 +142,7 @@ function DepositModal({ visible, onClose, onSuccess, isArabic, sandboxActive, sa
   const progress              = useRef(new Animated.Value(0)).current
   const QUICK                 = [50, 100, 200, 500]
 
-  /** Real checkout: PayTabs only */
+  // real money path — PayTabs hosted page (sandbox uses depositAPI instead)
   const canUseFlow  = sandboxActive || paytabsEnabled
   const sandboxCardUi = sandboxActive && !paytabsEnabled
 
@@ -181,6 +182,7 @@ function DepositModal({ visible, onClose, onSuccess, isArabic, sandboxActive, sa
     if (!url) throw new Error('No payment URL')
     handleClose()
     await Linking.openURL(url)
+    // user completes hosted checkout in browser — refresh wallet on deep link / manual pull
     Alert.alert(
       isArabic ? 'أكمل الدفع' : 'Complete payment',
       isArabic
@@ -857,6 +859,7 @@ export default function WalletScreen() {
 
   useEffect(() => {
     if (!socket) return
+    // milestone release / escrow lock — refresh balance without leaving screen
     socket.on('paymentReleased', fetchData)
     socket.on('escrowLocked', fetchData)
     return () => { socket.off('paymentReleased', fetchData); socket.off('escrowLocked', fetchData) }
@@ -880,7 +883,7 @@ export default function WalletScreen() {
   const balance     = wallet?.balance     ?? 0
   const escrow      = wallet?.escrow      ?? 0
   const totalEarned = wallet?.totalEarned ?? 0
-  /** Backend omits flag on old deploys — treat as sandbox so Add Funds keeps working */
+  // old backend deploys omit sandboxMode — default true so demo top-up still works
   const sandboxActive = wallet?.sandboxMode !== false
   const sandboxDepositMax = typeof wallet?.sandboxDepositMax === 'number' ? wallet.sandboxDepositMax : 50000
   const paytabsEnabled = wallet?.paytabsEnabled === true

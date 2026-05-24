@@ -1,6 +1,4 @@
-/**
- * Read `id` from JWT payload without verifying signature (client-side sanity check only).
- */
+// jwtPayload — read user id from JWT payload (client sanity check only, no verify)
 export function decodeJwtUserId(token: string): string | null {
   try {
     const parts = token.split('.')

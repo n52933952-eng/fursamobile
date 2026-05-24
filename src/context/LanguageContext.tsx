@@ -1,3 +1,4 @@
+// LanguageContext — EN/AR toggle, persisted in AsyncStorage
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import t, { Lang } from '../i18n/translations'

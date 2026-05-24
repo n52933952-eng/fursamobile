@@ -1,3 +1,4 @@
+// ContractScreen — milestones, escrow flow, freelancer submit / client release
 import React, { useState, useCallback, useEffect } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -237,6 +238,7 @@ export default function ContractScreen() {
   }
 
   const handleMarkComplete = () => {
+    // freelancer submits for admin review — escrow moves off client, not straight to wallet
     const amount = contract?.amount || 0
     Alert.alert(
       isArabic ? 'تأكيد إنهاء المشروع' : 'Mark Project Complete?',

@@ -1,9 +1,4 @@
-/**
- * FCM + Notifee — WhatsApp-style push notifications for Fursa
- *
- * Uses React Native Firebase *modular* Messaging API (no deprecation warnings).
- */
-
+// fcm — push setup (RN Firebase modular API + Notifee for foreground banners)
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Platform, PermissionsAndroid } from 'react-native'
 import {
@@ -17,7 +12,7 @@ import {
 } from '@react-native-firebase/messaging'
 import { saveFcmTokenAPI } from '../api'
 
-/** Android 13+ (API 33): system dialog "Allow notifications?" — FCM's requestPermission alone often skips this. */
+// Android 13+ needs POST_NOTIFICATIONS — requestPermission alone often skips the dialog
 async function requestAndroidPostNotificationsPermission(): Promise<boolean> {
   if (Platform.OS !== 'android') return true
   const api = typeof Platform.Version === 'number' ? Platform.Version : parseInt(String(Platform.Version), 10)
@@ -117,10 +112,7 @@ async function showNotification(
   })
 }
 
-/**
- * Call after login. Pass `accessToken` (JWT) so the first FCM upload uses the same token
- * as the session (avoids 401 / accidental logout from the API interceptor).
- */
+// pass accessToken from login — first FCM PUT before AsyncStorage interceptor catches up
 export async function setupPushNotifications(accessToken?: string | null): Promise<void> {
   try {
     const messaging = getMessaging()
@@ -183,8 +175,7 @@ export function registerBackgroundHandler() {
   try {
     const messaging = getMessaging()
     setBackgroundMessageHandler(messaging, async (remoteMessage: any) => {
-      // When the server sends a `notification` payload, Android/iOS already show the system banner.
-      // Showing again via Notifee would duplicate the notification.
+      // server already sent notification payload — don't duplicate via Notifee
       if (remoteMessage.notification?.title != null || remoteMessage.notification?.body != null) {
         return
       }

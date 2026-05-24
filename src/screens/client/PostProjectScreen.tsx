@@ -1,3 +1,4 @@
+// PostProjectScreen — client creates project + AI description/pricing helpers
 import React, { useState } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -13,35 +14,68 @@ const CATEGORIES = [...PROJECT_CATEGORIES]
 const SKILLS_LIST = ['React', 'Node.js', 'Python', 'UI/UX', 'Figma', 'Photoshop', 'SEO', 'WordPress', 'Laravel', 'Mobile', 'Android', 'iOS']
 
 // ─── AI Price Suggestion Banner ───────────────────────────────────────────────
-function PriceSuggestion({ suggestion, onUse, onDismiss, isArabic }: {
+type PricePick = 'min' | 'recommended' | 'max'
+
+function PriceSuggestion({ suggestion, onUse, onDismiss, isArabic, budgetType }: {
   suggestion: { min: number; max: number; recommended: number; reason: string }
   onUse: (n: number) => void; onDismiss: () => void; isArabic: boolean
+  budgetType: 'fixed' | 'hourly'
 }) {
+  const [pick, setPick] = React.useState<PricePick>('recommended')
+  const suffix = budgetType === 'hourly' ? (isArabic ? '/ساعة' : '/hr') : ''
+
+  React.useEffect(() => {
+    setPick('recommended')
+  }, [suggestion.min, suggestion.max, suggestion.recommended])
+
+  const selected =
+    pick === 'min' ? suggestion.min : pick === 'max' ? suggestion.max : suggestion.recommended
+
+  const opts: { id: PricePick; label: string; value: number; color: string }[] = [
+    { id: 'min', label: isArabic ? 'الحد الأدنى' : 'Min', value: suggestion.min, color: colors.info },
+    { id: 'recommended', label: isArabic ? 'الموصى به' : 'Recommended', value: suggestion.recommended, color: colors.success },
+    { id: 'max', label: isArabic ? 'الحد الأقصى' : 'Max', value: suggestion.max, color: colors.warning },
+  ]
+
   return (
     <View style={pStyles.box}>
       <View style={pStyles.header}>
         <Text style={pStyles.title}>🤖 {isArabic ? 'اقتراح ذكي للسعر' : 'AI Smart Pricing'}</Text>
         <TouchableOpacity onPress={onDismiss}><Text style={{ color: colors.textDim, fontSize: 18 }}>✕</Text></TouchableOpacity>
       </View>
+      <Text style={pStyles.pickHint}>
+        {isArabic ? 'اختر السعر ثم اضغط موافق' : 'Pick a price, then tap Use'}
+      </Text>
       <View style={pStyles.rangeRow}>
-        <View style={pStyles.rangeItem}>
-          <Text style={pStyles.rangeLabel}>{isArabic ? 'الحد الأدنى' : 'Min'}</Text>
-          <Text style={[pStyles.rangeVal, { color: colors.info }]}>${suggestion.min}</Text>
-        </View>
-        <View style={pStyles.rangeMid}>
-          <Text style={pStyles.rangeLabel}>{isArabic ? 'الموصى به' : 'Recommended'}</Text>
-          <Text style={[pStyles.rangeVal, { color: colors.success, fontSize: font.xl }]}>${suggestion.recommended}</Text>
-        </View>
-        <View style={pStyles.rangeItem}>
-          <Text style={pStyles.rangeLabel}>{isArabic ? 'الحد الأقصى' : 'Max'}</Text>
-          <Text style={[pStyles.rangeVal, { color: colors.warning }]}>${suggestion.max}</Text>
-        </View>
+        {opts.map((o) => {
+          const active = pick === o.id
+          const isRec = o.id === 'recommended'
+          return (
+            <TouchableOpacity
+              key={o.id}
+              style={[
+                isRec ? pStyles.rangeMid : pStyles.rangeItem,
+                active && { borderWidth: 2, borderColor: o.color, borderRadius: radius.md },
+                active && !isRec && { backgroundColor: o.color + '18' },
+              ]}
+              onPress={() => setPick(o.id)}
+              activeOpacity={0.75}
+            >
+              <Text style={pStyles.rangeLabel}>{o.label}</Text>
+              <Text style={[pStyles.rangeVal, { color: o.color, fontSize: isRec ? font.xl : font.lg }]}>
+                ${o.value}{suffix}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
       </View>
       {suggestion.reason && (
         <Text style={pStyles.reason}>💡 {suggestion.reason}</Text>
       )}
-      <TouchableOpacity style={pStyles.useBtn} onPress={() => onUse(suggestion.recommended)}>
-        <Text style={pStyles.useBtnText}>{isArabic ? `استخدم $${suggestion.recommended}` : `Use $${suggestion.recommended}`}</Text>
+      <TouchableOpacity style={pStyles.useBtn} onPress={() => onUse(selected)}>
+        <Text style={pStyles.useBtnText}>
+          {isArabic ? `استخدم $${selected}${suffix}` : `Use $${selected}${suffix}`}
+        </Text>
       </TouchableOpacity>
     </View>
   )
@@ -51,13 +85,14 @@ const pStyles = StyleSheet.create({
   box:       { backgroundColor: '#0F2840', borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1.5, borderColor: colors.info + '55' },
   header:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   title:     { color: colors.info, fontWeight: '800', fontSize: font.base },
-  rangeRow:  { flexDirection: 'row', marginBottom: 10 },
-  rangeItem: { flex: 1, alignItems: 'center' },
-  rangeMid:  { flex: 1.3, alignItems: 'center', backgroundColor: colors.success + '15', borderRadius: radius.md, paddingVertical: 6 },
+  rangeRow:  { flexDirection: 'row', marginBottom: 10, gap: 6 },
+  rangeItem: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4 },
+  rangeMid:  { flex: 1.3, alignItems: 'center', backgroundColor: colors.success + '15', borderRadius: radius.md, paddingVertical: 8, paddingHorizontal: 4 },
   rangeLabel:{ color: colors.textMuted, fontSize: 11, marginBottom: 3 },
   rangeVal:  { fontWeight: '800', fontSize: font.lg },
+  pickHint:  { color: colors.textMuted, fontSize: font.sm, marginBottom: 10, textAlign: 'center' },
   reason:    { color: colors.textMuted, fontSize: font.sm, lineHeight: 18, marginBottom: 10 },
-  useBtn:    { backgroundColor: colors.success, borderRadius: radius.md, paddingVertical: 10, alignItems: 'center' },
+  useBtn:    { backgroundColor: colors.success, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' },
   useBtnText:{ color: 'white', fontWeight: '700', fontSize: font.base },
 })
 
@@ -65,7 +100,7 @@ const pStyles = StyleSheet.create({
 function AiDescModal({ visible, result, onUse, onClose, isArabic }: {
   visible: boolean; result: string; onUse: (text: string) => void; onClose: () => void; isArabic: boolean
 }) {
-  // Parse EN/AR from the result text
+  // AI returns "EN: ... AR: ..." — modal lets user pick which to paste
   const enMatch = result.match(/EN:\s*([\s\S]*?)(?:AR:|$)/i)
   const arMatch = result.match(/AR:\s*([\s\S]*?)$/i)
   const enText = enMatch?.[1]?.trim() || result
@@ -184,8 +219,10 @@ export default function PostProjectScreen() {
     try {
       const { data } = await aiPricingAPI({
         category,
+        title: title.trim(),
         description: description || title || 'General project',
         skills,
+        budgetType,
       })
       setPriceSuggestion(data)
     } catch (err: any) {
@@ -346,6 +383,7 @@ export default function PostProjectScreen() {
           {priceSuggestion && (
             <PriceSuggestion
               suggestion={priceSuggestion}
+              budgetType={budgetType}
               onUse={(n) => { setBudget(String(n)); setPriceSuggestion(null) }}
               onDismiss={() => setPriceSuggestion(null)}
               isArabic={isArabic}

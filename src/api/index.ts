@@ -1,3 +1,4 @@
+// api/index — axios client + REST helpers for the Fursa backend
 import axios from 'axios'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { emitOrphanSession } from './authSession'
@@ -6,7 +7,7 @@ import { emitOrphanSession } from './authSession'
 // e.g. http://192.168.1.X:5000
 export const BASE_URL = 'https://fursa-uvx1.onrender.com'
 
-/** Full URL for static uploads or absolute profilePic from the API */
+// turn /uploads/... or relative profilePic into full URL for Image source
 export function resolveServerAssetUrl(path?: string | null): string | null {
   if (path == null || !String(path).trim()) return null
   const p = String(path).trim()
@@ -16,7 +17,7 @@ export function resolveServerAssetUrl(path?: string | null): string | null {
   return `${base}${rel}`
 }
 
-/** Render cold start is often ~1–3 min (varies). 3 min covers most wakes without waiting forever on a real failure. */
+// Render free tier cold start — 3 min timeout so first request after sleep usually succeeds
 export const API_TIMEOUT_MS = 180_000 // 3 minutes
 
 const api = axios.create({
@@ -92,11 +93,7 @@ api.interceptors.request.use(async (config) => {
   return config
 })
 
-/**
- * Only when verifyToken says this exact JWT's user id is missing from MongoDB.
- * Clears ghost tokens (e.g. old DB) so the user can Google sign-in again for a fresh id.
- * Does NOT clear on generic 401 / Invalid token (avoids random logouts).
- */
+// orphan JWT — Mongo user gone (old DB wipe). Clear storage; generic 401 stays logged in
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
@@ -128,7 +125,7 @@ export const loginAPI          = (data: object)      => api.post('/auth/login', 
 export const registerAPI       = (data: object)      => api.post('/auth/signup', data)
 export const logoutAPI         = ()                  => api.post('/auth/logout')
 export const googleSignInAPI   = (data: object)      => api.post('/auth/google', data)
-/** @param accessToken optional JWT — pass from login() so the first save works before AsyncStorage is read reliably */
+// pass JWT from login() — FCM save races AsyncStorage on first sign-in
 export const saveFcmTokenAPI = (fcmDeviceToken: string, accessToken?: string | null) =>
   api.put(
     '/user/fcm-token',
@@ -152,10 +149,7 @@ export const acceptProposalAPI = (id: string)        => api.put(`/proposal/accep
 export const getProfileAPI      = (id: string)       => api.get(`/user/${id}`)
 export const updateProfileAPI   = (data: object)     => api.put('/user/update', data)
 
-/**
- * Avatar upload uses `fetch` (not axios): RN multipart + axios default JSON Content-Type
- * often breaks uploads; fetch sets the multipart boundary correctly.
- */
+// fetch not axios — multipart was breaking on RN (axios kept JSON Content-Type)
 export async function uploadProfileAvatarAPI(
   formData: FormData,
 ): Promise<{ data: Record<string, unknown> }> {
@@ -191,7 +185,6 @@ export const getMessagesAPI      = (id: string)      => api.get(`/message/${id}`
 export const sendMessageAPI      = (data: object)    => api.post('/message', data)
 export const deleteMessageAPI    = (messageId: string) => api.delete(`/message/by-id/${messageId}`)
 
-/** Logged-in client/freelancer: platform admin for support chat */
 export const getSupportAdminAPI  = ()                => api.get('/user/support-admin')
 
 // Wallet
@@ -200,7 +193,7 @@ export const getTransactionsAPI  = ()                => api.get('/wallet/transac
 export const depositAPI          = (amount: number)  => api.post('/wallet/deposit', { amount })
 export const withdrawAPI         = (amount: number)  => api.post('/wallet/withdraw', { amount })
 
-/** Wallet top-up via PayTabs (hosted checkout); balance updates after return / callback */
+// PayTabs hosted checkout — balance updates after return URL / server callback
 export const createPaytabsPaymentAPI = (amount: number) =>
   api.post('/payments/paytabs/create-payment', { amount })
 
@@ -240,6 +233,6 @@ export const aiPricingAPI        = (data: object)    => api.post('/ai/pricing', 
 export const aiExtractSkillsAPI  = (data: object)    => api.post('/ai/skills', data)
 export const aiMatchAPI          = (projectId: string) => api.get(`/ai/match/${projectId}`)
 
-/** In-app AI assistant (Groq on server — GROQ_API_KEY) */
+// Groq-backed assistant — GROQ_API_KEY lives on server only
 export type AiChatMessage = { role: 'user' | 'assistant'; content: string }
 export const aiChatAPI = (messages: AiChatMessage[]) => api.post('/ai/chat', { messages })

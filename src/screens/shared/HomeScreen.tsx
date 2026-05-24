@@ -1,3 +1,4 @@
+// HomeScreen — client project list / freelancer browse + bid modal
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch,
@@ -310,6 +311,7 @@ export default function HomeScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [category,    setCategory]    = useState('All')
   const freelancerInterested = (user as any)?.interestedCategories || []
+  // freelancer feed chips = profile categories (fallback all if none picked)
   const freelancerChips = [
     'All',
     ...(Array.isArray(freelancerInterested) && freelancerInterested.length > 0
@@ -361,6 +363,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (!socket) return
+    // socket refetch signals — REST still owns the actual rows
     const handler = () => fetchAll()
     socket.on('proposalReceived', handler)
     socket.on('proposalAccepted', handler)

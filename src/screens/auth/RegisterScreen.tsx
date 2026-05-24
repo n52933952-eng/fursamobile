@@ -1,3 +1,4 @@
+// RegisterScreen — signup with role + freelancer category prefs
 import React, { useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
@@ -8,10 +9,12 @@ import { registerAPI } from '../../api'
 import { getFriendlyApiError } from '../../utils/networkErrors'
 import { useLang } from '../../context/LanguageContext'
 import ProjectCategoryPicker from '../../components/ProjectCategoryPicker'
+import CareerPicker from '../../components/CareerPicker'
 
 export default function RegisterScreen({ navigation }: any) {
   const [form, setForm]         = useState({
-    username: '', email: '', password: '', role: '', interestedCategories: [] as string[],
+    firstName: '', lastName: '', email: '', password: '', role: '', career: '',
+    interestedCategories: [] as string[],
   })
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading]   = useState(false)
@@ -26,7 +29,7 @@ export default function RegisterScreen({ navigation }: any) {
   ]
 
   const handleRegister = async () => {
-    if (!form.username || !form.email || !form.password || !form.role) {
+    if (!form.firstName || !form.lastName || !form.email || !form.password || !form.role) {
       Alert.alert(
         isArabic ? 'خطأ' : 'Error',
         isArabic ? 'يرجى ملء جميع الحقول واختيار دور' : 'Please fill all fields and select a role'
@@ -37,6 +40,13 @@ export default function RegisterScreen({ navigation }: any) {
       Alert.alert(
         isArabic ? 'خطأ' : 'Error',
         isArabic ? 'اختر فئة مشروع واحدة على الأقل (مثل التصميم أو البرمجة)' : 'Pick at least one category (e.g. Design, Development)'
+      )
+      return
+    }
+    if (form.role === 'freelancer' && !form.career) {
+      Alert.alert(
+        isArabic ? 'خطأ' : 'Error',
+        isArabic ? 'اختر تخصصك (مثل Full Stack أو IT أو كتابة)' : 'Select your career (e.g. Full Stack, IT, Writing)'
       )
       return
     }
@@ -89,6 +99,18 @@ export default function RegisterScreen({ navigation }: any) {
         ))}
       </View>
 
+      {form.role === 'freelancer' ? (
+        <View style={{ marginBottom: spacing.md }}>
+          <Text style={[styles.label, { textAlign: textDir }]}>{tr.career}</Text>
+          <Text style={[styles.hint, { textAlign: textDir }]}>{tr.selectCareer}</Text>
+          <CareerPicker
+            value={form.career}
+            onChange={(career) => setForm((f) => ({ ...f, career }))}
+            isArabic={isArabic}
+          />
+        </View>
+      ) : null}
+
       {/* Project categories (same list as posting a project) */}
       {form.role === 'freelancer' ? (
         <View style={{ marginBottom: spacing.md }}>
@@ -114,15 +136,27 @@ export default function RegisterScreen({ navigation }: any) {
 
       {/* Fields */}
       <View style={styles.card}>
-        <Text style={[styles.label, { textAlign: textDir }]}>{tr.username}</Text>
+        <Text style={[styles.label, { textAlign: textDir }]}>{tr.firstName}</Text>
         <View style={styles.inputBox}>
           <TextInput
             style={[styles.input, { textAlign: textDir }]}
-            placeholder={tr.enterUsername}
+            placeholder={tr.enterFirstName}
             placeholderTextColor={colors.textDim}
-            value={form.username}
-            onChangeText={v => set('username', v)}
-            autoCapitalize="none"
+            value={form.firstName}
+            onChangeText={v => set('firstName', v)}
+            autoCapitalize="words"
+          />
+        </View>
+
+        <Text style={[styles.label, { textAlign: textDir }]}>{tr.lastName}</Text>
+        <View style={styles.inputBox}>
+          <TextInput
+            style={[styles.input, { textAlign: textDir }]}
+            placeholder={tr.enterLastName}
+            placeholderTextColor={colors.textDim}
+            value={form.lastName}
+            onChangeText={v => set('lastName', v)}
+            autoCapitalize="words"
           />
         </View>
 

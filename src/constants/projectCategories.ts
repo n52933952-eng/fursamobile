@@ -1,4 +1,4 @@
-/** Must match Post Project & backend allow-list (order for UI chips). */
+// projectCategories — must stay in sync with backend allow-list + PostProjectScreen
 export const PROJECT_CATEGORIES = [
   'Design',
   'Development',
